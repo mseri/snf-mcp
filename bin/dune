@@ -1,0 +1,16 @@
+(executable
+ (public_name ddg_mcp)
+ (libraries
+  ca-certs
+  mcp.sdk
+  mcp.server
+  eio
+  eio_main
+  cohttp
+  cohttp-eio
+  lambdasoup
+  mirage-crypto-rng.unix
+  re
+  tls
+  tls-eio
+  uri))
