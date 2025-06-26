@@ -190,6 +190,11 @@ module Web_content_fetcher = struct
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" );
       ]
 
+  let truncate_at max_length content =
+    if String.length content > max_length then
+      String.sub content 0 max_length ^ "... [content truncated]"
+    else content
+
   let rec get_with_redirects ~sw ~client ~headers ~max_redirects current_url =
     if max_redirects < 0 then Error "Too many redirects"
     else
@@ -221,6 +226,54 @@ module Web_content_fetcher = struct
             (Printf.sprintf "Could not access the webpage (%s)"
                (Http.Status.to_string status))
 
+  let fetch_markdown ~sw ~net ~clock ~rate_limiter ?(max_length = 8192)
+      ~use_trafilatura url =
+    try
+      if use_trafilatura then
+        let ic =
+          Unix.open_process_args_in "trafilatura" [| "markdown"; "-u"; url |]
+        in
+        let output = In_channel.input_all ic in
+        let exit_code = Unix.close_process_in ic in
+        match exit_code with
+        | WEXITED 0 ->
+            let truncated_text = truncate_at max_length output in
+            Log.infof "Successfully fetched and parsed content (%d characters)"
+              (String.length truncated_text);
+            Ok truncated_text
+        | WEXITED n | WSIGNALED n | WSTOPPED n ->
+            Error
+              (Printf.sprintf
+                 "Failed to fetch content using trafilatura (error code %d): %s"
+                 n output)
+      else (
+        Rate_limiter.acquire rate_limiter clock;
+        Log.infof "Fetching content from: %s" url;
+        let client = Client.make ~https:(Some (Https.make ())) net in
+        let url = "https://r.jina.ai/" ^ url in
+        let headers = Http.Header.add headers "X-Base" "final" in
+
+        (* Use the get_with_redirects function to handle redirects *)
+        match Client.get ~sw ~headers client (Uri.of_string url) with
+        | resp, body when resp.status = `OK ->
+            let content =
+              Eio.Buf_read.(parse_exn take_all) body ~max_size:max_int
+            in
+            let truncated_text = truncate_at max_length content in
+            Log.infof "Successfully fetched content (%d characters)"
+              (String.length truncated_text);
+            Ok truncated_text
+        | resp, body ->
+            let _ = Eio.Flow.read_all body in
+            Error
+              (Printf.sprintf "Could not access the webpage (%s)"
+                 (Http.Status.to_string resp.status)))
+    with ex ->
+      Error
+        (Printf.sprintf
+           "An unexpected error occurred while fetching the webpage (%s)"
+           (Printexc.to_string ex))
+
   let fetch_and_parse ~sw ~net ~clock ~rate_limiter ?(max_length = 8192) url =
     try
       Rate_limiter.acquire rate_limiter clock;
@@ -248,11 +301,7 @@ module Web_content_fetcher = struct
                  ~by:" " (* Replace multiple whitespace with a single space *)
           in
 
-          let truncated_text =
-            if String.length text > max_length then
-              String.sub text 0 max_length ^ "... [content truncated]"
-            else text
-          in
+          let truncated_text = truncate_at max_length text in
           Log.infof "Successfully fetched and parsed content (%d characters)"
             (String.length truncated_text);
           Ok truncated_text
@@ -284,6 +333,16 @@ let () =
   Arg.parse spec (fun _ -> ()) usage_msg;
 
   Random.self_init ();
+
+  let use_trafilatura =
+    match Sys.command "command -v trafilatura > /dev/null 2>&1" with
+    | 0 ->
+        Log.info "Trafilatura is available";
+        true
+    | _ ->
+        Log.info "Trafilatura is not available, falling back to jina reader";
+        false
+  in
 
   Eio_main.run @@ fun env ->
   let search_rate_limiter = Rate_limiter.create 30 in
@@ -362,6 +421,43 @@ let () =
               match
                 Web_content_fetcher.fetch_and_parse ~sw ~net ~clock
                   ~rate_limiter:fetch_rate_limiter ?max_length url
+              with
+              | Ok content -> content
+              | Error msg -> msg)
+        in
+        TextContent.yojson_of_t
+          TextContent.{ text = response_text; annotations = None })
+  in
+
+  let _ =
+    add_tool server ~name:"fetch_markdown"
+      ~description:"Fetch and parse content from a webpage URL as Markdown."
+      ~schema_properties:
+        [
+          ("url", "string", "The webpage URL to fetch content from");
+          ( "max_length",
+            "integer",
+            "Maximum length (in bytes) of content to return (default: 8192 \
+             characters)" );
+        ]
+      ~schema_required:[ "url" ]
+      (fun args ->
+        let response_text =
+          Switch.run @@ fun sw ->
+          match
+            (get_string_param args "url", get_string_param args "max_length")
+          with
+          | Error msg, _ -> msg
+          | Ok url, max_length -> (
+              let max_length =
+                match max_length with
+                | Error _ -> None
+                | Ok len -> int_of_string_opt len
+              in
+              match
+                Web_content_fetcher.fetch_markdown ~sw ~net ~clock
+                  ~rate_limiter:fetch_rate_limiter ?max_length ~use_trafilatura
+                  url
               with
               | Ok content -> content
               | Error msg -> msg)
