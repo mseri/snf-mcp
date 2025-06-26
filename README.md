@@ -177,3 +177,8 @@ DuckDuckGo's search results are parsed from the HTML response. If search results
 3. Issues with the search query format
 
 Try rephrasing your query or checking if DuckDuckGo's service is functioning normally.
+
+# TODO
+
+- revise interface: default stdio mode, HTTP mode optional with --serve PORT (default 8080)
+- allow to extract page content from `jina reader API` or `trafilatura`

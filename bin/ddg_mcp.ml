@@ -221,7 +221,7 @@ module Web_content_fetcher = struct
             (Printf.sprintf "Could not access the webpage (%s)"
                (Http.Status.to_string status))
 
-  let fetch_and_parse ~sw ~net ~clock ~rate_limiter url =
+  let fetch_and_parse ~sw ~net ~clock ~rate_limiter ?(max_length = 8192) url =
     try
       Rate_limiter.acquire rate_limiter clock;
       Log.infof "Fetching content from: %s" url;
@@ -249,8 +249,8 @@ module Web_content_fetcher = struct
           in
 
           let truncated_text =
-            if String.length text > 8000 then
-              String.sub text 0 8000 ^ "... [content truncated]"
+            if String.length text > max_length then
+              String.sub text 0 max_length ^ "... [content truncated]"
             else text
           in
           Log.infof "Successfully fetched and parsed content (%d characters)"
@@ -338,17 +338,30 @@ let () =
     add_tool server ~name:"fetch_content"
       ~description:"Fetch and parse content from a webpage URL."
       ~schema_properties:
-        [ ("url", "string", "The webpage URL to fetch content from") ]
+        [
+          ("url", "string", "The webpage URL to fetch content from");
+          ( "max_length",
+            "integer",
+            "Maximum length (in bytes) of content to return (default: 8192 \
+             characters)" );
+        ]
       ~schema_required:[ "url" ]
       (fun args ->
         let response_text =
           Switch.run @@ fun sw ->
-          match get_string_param args "url" with
-          | Error msg -> msg
-          | Ok url -> (
+          match
+            (get_string_param args "url", get_string_param args "max_length")
+          with
+          | Error msg, _ -> msg
+          | Ok url, max_length -> (
+              let max_length =
+                match max_length with
+                | Error _ -> None
+                | Ok len -> int_of_string_opt len
+              in
               match
                 Web_content_fetcher.fetch_and_parse ~sw ~net ~clock
-                  ~rate_limiter:fetch_rate_limiter url
+                  ~rate_limiter:fetch_rate_limiter ?max_length url
               with
               | Ok content -> content
               | Error msg -> msg)
