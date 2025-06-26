@@ -234,9 +234,12 @@ module Web_content_fetcher = struct
           let soup = Soup.parse html in
 
           (* Remove script, style, and navigation elements *)
-          soup
-          |> Soup.select "script, style, nav, header, footer"
-          |> Soup.iter Soup.delete;
+          List.iter
+            (fun selector ->
+              soup |> Soup.select selector |> Soup.iter Soup.delete)
+            [ "script"; "style"; "nav"; "header"; "footer" ];
+
+          Log.info "2";
 
           (* Get and clean up text content *)
           let text =
@@ -246,6 +249,7 @@ module Web_content_fetcher = struct
             |> Re.replace_string ~all:true whitespace_re
                  ~by:" " (* Replace multiple whitespace with a single space *)
           in
+          Log.info "3";
 
           let truncated_text =
             if String.length text > 8000 then
