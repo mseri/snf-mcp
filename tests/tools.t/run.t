@@ -1,0 +1,16 @@
+Ensure stdin version reports the available tools
+
+  $ echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | ddg_mcp --stdio
+  [INFO] Starting MCP server in stdio mode
+  [DEBUG] Starting MCP server: ocaml-ddg-search v0.1.0
+  [DEBUG] Protocol version: 2024-11-05
+  [DEBUG] Waiting for message...
+  [DEBUG] Raw input: {"jsonrpc":"2.0","method":"tools/list","id":1}
+  [DEBUG] Successfully parsed JSON
+  [DEBUG] Processing message: {"jsonrpc":"2.0","method":"tools/list","id":1}
+  [DEBUG] Received request with method: tools/list
+  [DEBUG] Processing tools/list request
+  [DEBUG] Sending response: {"jsonrpc":"2.0","id":1,"result":{"tools":[{"description":"Fetch and parse content from a webpage URL.","name":"fetch_content","inputSchema":{"type":"object","properties":{"url":{"type":"string","description":"The webpage URL to fetch content from"}},"required":["url"]}},{"description":"Search DuckDuckGo and return formatted results.","name":"search","inputSchema":{"type":"object","properties":{"query":{"type":"string","description":"The search query string"},"max_results":{"type":"integer","description":"Maximum number of results to return (default: 10)"}},"required":["query"]}}]}}
+  {"jsonrpc":"2.0","id":1,"result":{"tools":[{"description":"Fetch and parse content from a webpage URL.","name":"fetch_content","inputSchema":{"type":"object","properties":{"url":{"type":"string","description":"The webpage URL to fetch content from"}},"required":["url"]}},{"description":"Search DuckDuckGo and return formatted results.","name":"search","inputSchema":{"type":"object","properties":{"query":{"type":"string","description":"The search query string"},"max_results":{"type":"integer","description":"Maximum number of results to return (default: 10)"}},"required":["query"]}}]}}
+  [DEBUG] Waiting for message...
+  [DEBUG] End of file received on stdin
