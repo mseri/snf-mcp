@@ -32,11 +32,28 @@ Fetch and parse content from a webpage URL.
 
 **Parameters:**
 - `url` (string, required): The webpage URL to fetch content from
+- `max_length` (integer, optional): Maximum length (in bytes) of content to return (default: 8192)
 
 **Example:**
 ```json
 {
-  "url": "https://example.com/article"
+  "url": "https://example.com/article",
+  "max_length": 16384
+}
+```
+
+### `fetch_markdown`
+Fetch and parse content from a webpage URL as Markdown.
+
+**Parameters:**
+- `url` (string, required): The webpage URL to fetch content from
+- `max_length` (integer, optional): Maximum length (in bytes) of content to return (default: 8192)
+
+**Example:**
+```json
+{
+  "url": "https://example.com/article",
+  "max_length": 16384
 }
 ```
 
@@ -115,6 +132,21 @@ curl -X POST http://localhost:8080 -H "Content-Type: application/json" -d '{
 }'
 ```
 
+**Fetch webpage content as Markdown:**
+```bash
+curl -X POST http://localhost:8080 -H "Content-Type: application/json" -d '{
+  "jsonrpc": "2.0",
+  "id": 4,
+  "method": "tools/call",
+  "params": {
+    "name": "fetch_markdown",
+    "arguments": {
+      "url": "https://ocaml.org"
+    }
+  }
+}'
+```
+
 #### Standard I/O Mode
 
 When using stdio mode, you can pipe JSON-RPC requests to the binary:
@@ -154,15 +186,6 @@ The server implements rate limiting to be respectful to external services:
 - **Search requests**: Limited to 30 requests per minute
 - **Content fetching**: Limited to 20 requests per minute
 
-## Implementation Details
-
-The server is built on the following technologies:
-- **OCaml**: Type-safe functional programming language
-- **Eio**: Effect-based I/O library for OCaml with built-in concurrency
-- **Lambdasoup**: HTML parsing library used to extract search results and webpage content
-- **MCP SDK**: Model Context Protocol library for standardized tool calling
-- **Cohttp-eio**: HTTP client/server built on the Eio runtime
-
 ## Troubleshooting
 
 ### Rate Limiting Issues
@@ -178,6 +201,19 @@ DuckDuckGo's search results are parsed from the HTML response. If search results
 
 Try rephrasing your query or checking if DuckDuckGo's service is functioning normally.
 
-# TODO
+### Content Extraction Quality
 
-- revise interface: default stdio mode, HTTP mode optional with --serve PORT (default 8080)
+The `fetch_markdown` tool tries to use the `trafilatura` Python library if it's available on your system, as it produces higher quality text extraction. If `trafilatura` is not found, it falls back to [jina reader](https://jina.ai/reader/).
+
+
+For best results, consider installing `trafilatura`, for example in one of the following 3 ways:
+
+```bash
+uv tool install trafilatura # Method 1: Using `uv` tool
+pipx install trafilatura # Method 2: Using `pipx`
+pip install trafilatura # Method 3: Using `pip`
+```
+
+
+# TODO
+- revise interface making default stdio mode, HTTP mode optional with --serve PORT (default 8080) ?
