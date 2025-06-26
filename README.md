@@ -106,6 +106,13 @@ Expected response:
   }
 }
 ```
+or using the stdio interface, you can send a request like this:
+
+```bash
+echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"search","arguments":{"query":"Where is groningen"}},"id":2}' | dune exec ./bin/ddg_mcp.exe -- --stdio | jq
+```
+
+For the output, I'll let you try.
 
 ## Installation
 
