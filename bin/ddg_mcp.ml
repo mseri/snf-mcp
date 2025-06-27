@@ -1,5 +1,4 @@
 open Eio.Std
-open Mcp
 open Mcp_sdk
 open Cohttp_eio
 
