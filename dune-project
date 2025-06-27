@@ -27,8 +27,9 @@
   eio_main
   cohttp
   cohttp-eio
-  mirage-crypto-rng
+  jsonrpc
   lambdasoup
+  mirage-crypto-rng
   re
   tls-eio
   yojson
