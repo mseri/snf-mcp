@@ -250,4 +250,5 @@ pip install trafilatura # Method 3: Using `pip`
 
 
 # TODO
-- revise interface making default stdio mode, HTTP mode optional with --serve PORT (default 8080) ?
+- Update reade (interface changed, added wikipedia tool)
+- Debug why response is doubly-nested
