@@ -480,8 +480,7 @@ let () =
               | Error msg ->
                   Printf.sprintf "An error occurred while searching: %s" msg)
         in
-        TextContent.yojson_of_t
-          TextContent.{ text = response_text; annotations = None })
+        `String response_text)
   in
 
   let _ =
@@ -516,8 +515,7 @@ let () =
               | Ok content -> content
               | Error msg -> msg)
         in
-        TextContent.yojson_of_t
-          TextContent.{ text = response_text; annotations = None })
+        `String response_text)
   in
 
   let _ =
@@ -553,8 +551,7 @@ let () =
               | Ok content -> content
               | Error msg -> msg)
         in
-        TextContent.yojson_of_t
-          TextContent.{ text = response_text; annotations = None })
+        `String response_text)
   in
 
   let _ =
@@ -591,8 +588,7 @@ let () =
                   Printf.sprintf
                     "An error occurred while searching Wikipedia: %s" msg)
         in
-        TextContent.yojson_of_t
-          TextContent.{ text = response_text; annotations = None })
+        `String response_text)
   in
 
   let on_error exn =
