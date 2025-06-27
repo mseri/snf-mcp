@@ -179,6 +179,40 @@ This will make the `ddg_mcp` binary available in your PATH.
 ### Integration with MCP Clients
 
 This server can be integrated with any MCP-compatible client. Configure your client to connect to this server using the appropriate transport method.
+Below we show how to configure the stdio version, the remote version is very similar.
+Keep in mind that this is early software and not recommended for production or to be exposed on unprotected networks.
+
+### LLM CLI
+
+Install the [`llm-tools-mcp` plugin](https://github.com/VirtusLab/llm-tools-mcp) with
+```
+llm install llm-tools-mcp
+```
+then edit (or create) `~/.llm-tools-mcp/mcp.json` with
+```
+{
+  "mcpServers": {
+    "ddg_mcp": {
+      "command": "/path/to/ddg_mcp",
+      "args": [
+        "--stdio"
+      ]
+    }
+  }
+}
+```
+
+#### LMStudio
+
+Edit the json file from the interface adding the same json entry as in the LLM CLI example above.
+See also the [official documentation](https://lmstudio.ai/docs/app/plugins/mcp).
+
+#### Jan
+
+Use the _full path_ to ddg_mcp as command, and `--stdio` as the only argument.
+See also the [official documentation](https://jan.ai/docs/mcp).
+
+Note, _I was only able to configure stdio-based mcp servers_ with Jan.
 
 ## Rate Limiting
 
