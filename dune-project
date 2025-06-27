@@ -24,12 +24,14 @@
   dune
   ca-certs
   eio
+  eio_main
   cohttp
   cohttp-eio
   mirage-crypto-rng
   lambdasoup
   re
   tls-eio
+  yojson
   uri)
  (tags
   ("mcp" "duckduckgo" "search" "web" "eio" "async" "protocol")))
