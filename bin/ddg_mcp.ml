@@ -413,13 +413,13 @@ let set_stdio () = server_mode := Stdio
 
 let spec =
   [
-    ("--port", Arg.Int set_port, " Set port for server (default: 8080)");
+    ("--serve", Arg.Int set_port, " Run http server, listening on PORT");
     ( "--stdio",
       Arg.Unit set_stdio,
-      " Use stdio for communication instead of port" );
+      " Use stdio for communication instead of port (default)" );
   ]
 
-let usage_msg = "ddg_mcp [--port PORT] [--stdio]"
+let usage_msg = "ddg_mcp [--serve PORT | --stdio]"
 
 let () =
   Arg.parse spec (fun _ -> ()) usage_msg;
@@ -462,16 +462,15 @@ let () =
       (fun args ->
         let response_text =
           Switch.run @@ fun sw ->
-          match get_string_param args "query" with
-          | Error msg -> msg
-          | Ok query -> (
+          match
+            (get_string_param args "query", get_string_param args "max_results")
+          with
+          | Error msg, _ -> msg
+          | Ok query, max_results -> (
               let max_results =
-                match args with
-                | `Assoc fields -> (
-                    match List.assoc_opt "max_results" fields with
-                    | Some (`Int i) -> i
-                    | _ -> 10)
-                | _ -> 10
+                match max_results with
+                | Error _ -> 10
+                | Ok len -> Option.value (int_of_string_opt len) ~default:10
               in
               match
                 DuckDuckGo_searcher.search ~sw ~net ~clock
@@ -572,16 +571,16 @@ let () =
       (fun args ->
         let response_text =
           Switch.run @@ fun sw ->
-          match get_string_param args "search_term" with
-          | Error msg -> msg
-          | Ok search_term -> (
+          match
+            ( get_string_param args "search_term",
+              get_string_param args "max_results" )
+          with
+          | Error msg, _ -> msg
+          | Ok search_term, max_results -> (
               let max_results =
-                match args with
-                | `Assoc fields -> (
-                    match List.assoc_opt "max_results" fields with
-                    | Some (`Int i) -> i
-                    | _ -> 10)
-                | _ -> 10
+                match max_results with
+                | Error _ -> 10
+                | Ok len -> Option.value (int_of_string_opt len) ~default:10
               in
               match
                 Web_content_fetcher.search_wikipedia ~sw ~net ~clock
