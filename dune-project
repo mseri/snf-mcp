@@ -29,7 +29,7 @@
   cohttp-eio
   jsonrpc
   lambdasoup
-  mirage-crypto-rng
+  (mirage-crypto-rng (>= 1.2.0))
   re
   tls-eio
   (yojson (< 3.0.0))
