@@ -1,7 +1,7 @@
 Ensure stdin version reports the available tools
 
   $ echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | ddg_mcp --stdio
-  [INFO] Trafilatura is available
+  [INFO] Trafilatura is not available, falling back to jina reader
   [INFO] Starting MCP server in stdio mode
   [DEBUG] Starting MCP server: ocaml-ddg-search v0.1.0
   [DEBUG] Protocol version: 2024-11-05
