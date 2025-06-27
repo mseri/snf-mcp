@@ -4,6 +4,8 @@ open Mcp_sdk
 open Cohttp_eio
 
 let whitespace_re = Re.compile (Re.str "\\s+")
+let wiki_opensnippet_re = Re.compile (Re.str "<span class=\"searchmatch\">")
+let wiki_closesnippet_re = Re.compile (Re.str "</span>")
 
 module Https = struct
   let authenticator =
@@ -310,6 +312,96 @@ module Web_content_fetcher = struct
         (Printf.sprintf
            "An unexpected error occurred while fetching the webpage (%s)"
            (Printexc.to_string ex))
+
+  let search_wikipedia ~sw ~net ~clock ~rate_limiter ?(max_results = 10)
+      search_term =
+    let parse_wiki (json : Yojson.Safe.t) =
+      let open Yojson.Safe.Util in
+      let fields = json |> member "query" |> member "search" |> to_list in
+      let results =
+        List.mapi
+          (fun i item ->
+            let title = item |> member "title" |> to_string in
+            let title_for_url =
+              String.trim title
+              |> Re.replace_string ~all:true whitespace_re ~by:"_"
+              |> Uri.pct_encode
+            in
+            let snippet =
+              item |> member "snippet" |> to_string
+              |> Re.replace_string ~all:true wiki_opensnippet_re ~by:""
+              |> Re.replace_string ~all:true wiki_closesnippet_re ~by:""
+            in
+            let position = i + 1 in
+            let link =
+              Printf.sprintf "https://en.wikipedia.org/wiki/%s" title_for_url
+            in
+            { title; link; snippet; position })
+          fields
+      in
+
+      if List.length results = 0 then
+        Error "No results were found for your search query on Wikipedia."
+      else
+        let output_lines =
+          Printf.sprintf "Found %d Wikipedia results:\n" (List.length results)
+          :: List.fold_left
+               (fun acc result ->
+                 let item_lines =
+                   [
+                     Printf.sprintf "%d. %s\n" result.position result.title;
+                     Printf.sprintf "URL: %s\n" result.link;
+                     Printf.sprintf "Summary: %s\n\n" result.snippet;
+                   ]
+                 in
+                 acc @ item_lines)
+               [] results
+        in
+        Ok (String.concat "\n" output_lines)
+    in
+
+    try
+      Rate_limiter.acquire rate_limiter clock;
+      Log.infof "Searching Wikipedia for: %s" search_term;
+
+      let base_url = "https://en.wikipedia.org/w/api.php" in
+      let params =
+        [
+          ("action", "query");
+          ("format", "json");
+          ("list", "search");
+          ("srsearch", search_term);
+          ("srlimit", string_of_int max_results);
+          ("srprop", "snippet|titlesnippet");
+        ]
+      in
+
+      let query_string =
+        params
+        |> List.map (fun (k, v) -> k ^ "=" ^ Uri.pct_encode v)
+        |> String.concat "&"
+      in
+      let url = base_url ^ "?" ^ query_string in
+
+      let client = Client.make ~https:(Some (Https.make ())) net in
+
+      match Client.get ~sw ~headers client (Uri.of_string url) with
+      | resp, body when resp.status = `OK ->
+          let json_content =
+            Eio.Buf_read.(parse_exn take_all) body ~max_size:max_int
+          in
+          let json = Yojson.Safe.from_string json_content in
+          parse_wiki json
+      | resp, body ->
+          let _ = Eio.Flow.read_all body in
+          Error
+            (Printf.sprintf "Wikipedia API request failed (%s)"
+               (Http.Status.to_string resp.status))
+    with ex ->
+      Error
+        (Printf.sprintf
+           "An unexpected error occurred while searching Wikipedia (%s)"
+           (Printexc.to_string ex))
 end
 
 (* Command-line argument parsing *)
@@ -461,6 +553,44 @@ let () =
               with
               | Ok content -> content
               | Error msg -> msg)
+        in
+        TextContent.yojson_of_t
+          TextContent.{ text = response_text; annotations = None })
+  in
+
+  let _ =
+    add_tool server ~name:"search_wikipedia"
+      ~description:"Search Wikipedia and return formatted results."
+      ~schema_properties:
+        [
+          ("search_term", "string", "The term to search for on Wikipedia");
+          ( "max_results",
+            "integer",
+            "Maximum number of results to return (default: 10)" );
+        ]
+      ~schema_required:[ "search_term" ]
+      (fun args ->
+        let response_text =
+          Switch.run @@ fun sw ->
+          match get_string_param args "search_term" with
+          | Error msg -> msg
+          | Ok search_term -> (
+              let max_results =
+                match args with
+                | `Assoc fields -> (
+                    match List.assoc_opt "max_results" fields with
+                    | Some (`Int i) -> i
+                    | _ -> 10)
+                | _ -> 10
+              in
+              match
+                Web_content_fetcher.search_wikipedia ~sw ~net ~clock
+                  ~rate_limiter:search_rate_limiter ~max_results search_term
+              with
+              | Ok results -> results
+              | Error msg ->
+                  Printf.sprintf
+                    "An error occurred while searching Wikipedia: %s" msg)
         in
         TextContent.yojson_of_t
           TextContent.{ text = response_text; annotations = None })
