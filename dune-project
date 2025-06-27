@@ -32,7 +32,7 @@
   mirage-crypto-rng
   re
   tls-eio
-  yojson
+  (yojson (< 3.0.0))
   uri)
  (tags
   ("mcp" "duckduckgo" "search" "web" "eio" "async" "protocol")))
