@@ -107,8 +107,8 @@ module DuckDuckGo_searcher = struct
       let result_strings =
         List.map
           (fun r ->
-            Printf.sprintf "%d. %s\n   URL: %s\n   Summary: %s" r.position
-              r.title r.link r.snippet)
+            Printf.sprintf "%d. %s\nURL: %s\nSummary: %s" r.position r.title
+              r.link r.snippet)
           results
       in
       Printf.sprintf "Found %d search results:\n\n" (List.length results)
