@@ -1,4 +1,4 @@
-# DuckDuckGo MCP Server
+# Web fetch and search MCP Server
 
 A Model Context Protocol (MCP) server that provides DuckDuckGo search and web content fetching capabilities, written in OCaml using the Eio asynchronous runtime.
 
