@@ -1,10 +1,11 @@
 # Web fetch and search MCP Server
 
-A Model Context Protocol (MCP) server that provides DuckDuckGo search and web content fetching capabilities, written in OCaml using the Eio asynchronous runtime.
+A Model Context Protocol (MCP) server that provides DuckDuckGo search, Wikipedia search, and web content fetching capabilities, written in OCaml using the eio asynchronous runtime.
 
 ## Features
 
 - **DuckDuckGo Search**: Search the web using DuckDuckGo's search engine
+- **Wikipedia Search**: Search Wikipedia for articles and content
 - **Web Content Fetching**: Fetch and parse content from web pages
 - **Rate Limiting**: Built-in rate limiting to respect service limits
 - **MCP Protocol**: Fully compatible with the Model Context Protocol specification (vendoring <https://tangled.sh/@anil.recoil.org/ocaml-mcp/>)
@@ -23,6 +24,21 @@ Search DuckDuckGo and return formatted results.
 ```json
 {
   "query": "OCaml programming language",
+  "max_results": 5
+}
+```
+
+### `search_wikipedia`
+Search Wikipedia and return formatted results.
+
+**Parameters:**
+- `search_term` (string, required): The term to search for on Wikipedia
+- `max_results` (integer, optional): Maximum number of results to return (default: 10)
+
+**Example:**
+```json
+{
+  "search_term": "OCaml programming language",
   "max_results": 5
 }
 ```
@@ -133,11 +149,27 @@ curl -X POST http://localhost:8080 -H "Content-Type: application/json" -d '{
 }'
 ```
 
-**Fetch webpage content as Markdown:**
+**Search Wikipedia:**
 ```bash
 curl -X POST http://localhost:8080 -H "Content-Type: application/json" -d '{
   "jsonrpc": "2.0",
   "id": 4,
+  "method": "tools/call",
+  "params": {
+    "name": "search_wikipedia",
+    "arguments": {
+      "search_term": "OCaml programming language",
+      "max_results": 3
+    }
+  }
+}'
+```
+
+**Fetch webpage content as Markdown:**
+```bash
+curl -X POST http://localhost:8080 -H "Content-Type: application/json" -d '{
+  "jsonrpc": "2.0",
+  "id": 5,
   "method": "tools/call",
   "params": {
     "name": "fetch_markdown",
@@ -158,6 +190,18 @@ echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | dune exec ./bin/ddg_mcp.
 
 ```bash
 echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"search","arguments":{"query":"OCaml programming language"}},"id":2}' | dune exec ./bin/ddg_mcp.exe -- --stdio | jq
+```
+
+```bash
+echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"search_wikipedia","arguments":{"search_term":"OCaml programming language"}},"id":3}' | dune exec ./bin/ddg_mcp.exe -- --stdio | jq
+```
+
+```bash
+echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"fetch_content","arguments":{"url":"https://ocaml.org"}},"id":4}' | dune exec ./bin/ddg_mcp -- --stdio | jq
+```
+
+```bash
+echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"fetch_markdown","arguments":{"url":"https://ocaml.org"}},"id":5}' | dune exec ./bin/ddg_mcp.exe -- --stdio | jq
 ```
 
 This mode is particularly useful when integrating with LLM clients that communicate over stdin/stdout.
@@ -215,10 +259,10 @@ See also the [official documentation](https://jan.ai/docs/mcp).
 
 Note, _I was only able to configure stdio-based mcp servers_ with Jan.
 
-## Rate Limiting
+### Rate Limiting
 
 The server implements rate limiting to be respectful to external services:
-- **Search requests**: Limited to 30 requests per minute
+- **Search requests (DuckDuckGo and Wikipedia)**: Limited to 30 requests per minute
 - **Content fetching**: Limited to 20 requests per minute
 
 ## Troubleshooting
@@ -249,6 +293,6 @@ pipx install trafilatura # Method 2: Using `pipx`
 pip install trafilatura # Method 3: Using `pip`
 ```
 
-
 # TODO
-- Update reade (interface changed, added wikipedia tool)
+- Debug why response is doubly-nested
+- Use pagination in the fetch
