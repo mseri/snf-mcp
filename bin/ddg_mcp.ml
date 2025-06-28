@@ -338,25 +338,7 @@ module Web_content_fetcher = struct
             { title; link; snippet; position })
           fields
       in
-
-      if List.length results = 0 then
-        Error "No results were found for your search query on Wikipedia."
-      else
-        let output_lines =
-          Printf.sprintf "Found %d Wikipedia results:\n" (List.length results)
-          :: List.fold_left
-               (fun acc result ->
-                 let item_lines =
-                   [
-                     Printf.sprintf "%d. %s\n" result.position result.title;
-                     Printf.sprintf "URL: %s\n" result.link;
-                     Printf.sprintf "Summary: %s\n\n" result.snippet;
-                   ]
-                 in
-                 acc @ item_lines)
-               [] results
-        in
-        Ok (String.concat "\n" output_lines)
+      Ok results
     in
 
     try
@@ -401,6 +383,27 @@ module Web_content_fetcher = struct
         (Printf.sprintf
            "An unexpected error occurred while searching Wikipedia (%s)"
            (Printexc.to_string ex))
+
+  let format_results_for_llm (results : search_result list) :
+      (string, string) result =
+    if List.length results = 0 then
+      Error "No results were found for your search query on Wikipedia."
+    else
+      let output_lines =
+        Printf.sprintf "Found %d Wikipedia results:\n" (List.length results)
+        :: List.fold_left
+             (fun acc result ->
+               let item_lines =
+                 [
+                   Printf.sprintf "%d. %s\n" result.position result.title;
+                   Printf.sprintf "URL: %s\n" result.link;
+                   Printf.sprintf "Summary: %s\n\n" result.snippet;
+                 ]
+               in
+               acc @ item_lines)
+             [] results
+      in
+      Ok (String.concat "\n" output_lines)
 end
 
 (* Command-line argument parsing *)
@@ -579,8 +582,10 @@ let () =
                 | Ok len -> Option.value (int_of_string_opt len) ~default:10
               in
               match
-                Web_content_fetcher.search_wikipedia ~sw ~net ~clock
-                  ~rate_limiter:search_rate_limiter ~max_results search_term
+                Web_content_fetcher.(
+                  search_wikipedia ~sw ~net ~clock
+                    ~rate_limiter:search_rate_limiter ~max_results search_term
+                  |> fun r -> Result.bind r format_results_for_llm)
               with
               | Ok results -> results
               | Error msg ->
