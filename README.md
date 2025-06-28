@@ -7,7 +7,7 @@ A Model Context Protocol (MCP) server that provides DuckDuckGo search and web co
 - **DuckDuckGo Search**: Search the web using DuckDuckGo's search engine
 - **Web Content Fetching**: Fetch and parse content from web pages
 - **Rate Limiting**: Built-in rate limiting to respect service limits
-- **MCP Protocol**: Fully compatible with the Model Context Protocol specification
+- **MCP Protocol**: Fully compatible with the Model Context Protocol specification (vendoring <https://tangled.sh/@anil.recoil.org/ocaml-mcp/>)
 - **Asynchronous**: Built on Eio for efficient concurrent operations
 
 ## Tools Provided
