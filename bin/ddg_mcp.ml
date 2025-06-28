@@ -137,18 +137,13 @@ module Web_searcher = struct
         let soup = Soup.parse html in
 
         let results =
-          soup |> Soup.select ".result"
-          |> Soup.to_list (* <-- FIX: Convert nodes sequence to a list *)
+          soup |> Soup.select ".result" |> Soup.to_list
           |> List.filter_map (fun result ->
                  let title_elem =
                    result |> Soup.select_one ".result__title > a"
                  in
-                 let snippet_elem =
-                   result |> Soup.select_one ".result__snippet"
-                 in
 
-                 match (title_elem, snippet_elem) with
-                 | Some title_node, Some snippet_node -> (
+                 Option.bind title_elem (function title_node ->
                      let title =
                        title_node |> Soup.trimmed_texts |> String.concat ""
                      in
@@ -163,12 +158,18 @@ module Web_searcher = struct
                        | _ -> None
                      in
                      let snippet =
-                       snippet_node |> Soup.trimmed_texts |> String.concat ""
+                       let snippet_elem =
+                         result |> Soup.select_one ".result__snippet"
+                       in
+                       match snippet_elem with
+                       | Some snippet_node ->
+                           snippet_node |> Soup.trimmed_texts
+                           |> String.concat ""
+                       | None -> ""
                      in
-                     match link with
-                     | Some l -> Some { title; link = l; snippet; position = 0 }
-                     | None -> None)
-                 | _ -> None)
+                     Option.map
+                       (fun l -> { title; link = l; snippet; position = 0 })
+                       link))
         in
         let final_results =
           results |> List.mapi (fun i r -> { r with position = i + 1 })
@@ -259,6 +260,19 @@ module Web_content_fetcher = struct
     else content
 
   let rec get_with_redirects ~sw ~client ~headers ~max_redirects current_url =
+    let current_url =
+      if
+        String.starts_with ~prefix:"https://" current_url
+        || String.starts_with ~prefix:"https://" current_url
+      then current_url
+      else (
+        Log.infof
+          "No http transport specified in '%s', adding https:// to the url."
+          current_url;
+        Printf.sprintf "https://%s" current_url)
+    in
+
+    (* Check for too many redirects *)
     if max_redirects < 0 then Error "Too many redirects"
     else
       let resp, body =
