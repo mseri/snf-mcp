@@ -9,6 +9,7 @@
   cohttp
   cohttp-eio
   lambdasoup
+  logs.fmt
   mirage-crypto-rng.unix
   re
   snf

@@ -37,7 +37,7 @@ let () =
   let () = Mcp_sdk.Log.(set_level Error) in
   Arg.parse spec (fun _ -> ()) usage_msg;
 
-  Random.self_init ();
+  Logs.set_reporter (Logs_fmt.reporter ());
 
   let use_trafilatura =
     match Sys.command "command -v trafilatura > /dev/null 2>&1" with

@@ -51,14 +51,6 @@ module Log = struct
   let warning msg = Logs.warn ~src (fun m -> m "%s" msg)
   let error msg = Logs.err ~src (fun m -> m "%s" msg)
 
-  (* (** Initialize default logging reporter *)
-  let init_reporter () =
-    if not (Logs.reporter () == Logs.nop_reporter) then
-      () (* Reporter already set up *)
-    else
-      let reporter = Logs_format.reporter () in
-      Logs.set_reporter reporter *)
-
   (** Set log level at runtime *)
   let set_level = function
     | Debug -> Logs.Src.set_level src (Some Logs.Debug)

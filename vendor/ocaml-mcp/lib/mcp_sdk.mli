@@ -31,9 +31,6 @@ module Log : sig
   val warning : string -> unit
   val error : string -> unit
 
-  (* val init_reporter : unit -> unit
-  (** Initialize default logging reporter *) *)
-
   val set_level : level -> unit
   (** Set log level at runtime *)
 

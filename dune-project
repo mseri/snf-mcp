@@ -25,10 +25,12 @@
   ca-certs
   eio
   eio_main
+  fmt
   cohttp
   cohttp-eio
   jsonrpc
   lambdasoup
+  logs
   (mirage-crypto-rng (>= 1.2.0))
   re
   tls-eio

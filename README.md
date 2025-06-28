@@ -95,6 +95,13 @@ dune exec ./bin/ddg_mcp.exe -- --stdio
 When installed via OPAM, you can run it directly:
 ```bash
 ddg_mcp [--serve PORT | --stdio]
+  --serve  Run http server, listening on PORT
+  --stdio  Use stdio for communication instead of port (default)
+  --debug  Enable debug logging
+  --verbose  Enable verbose logging
+  --quiet  Suppress non-error logs (default)
+  -help  Display this list of options
+  --help  Display this list of options
 ```
 
 ### Testing the Server
