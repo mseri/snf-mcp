@@ -41,14 +41,18 @@ let () =
   Logs.set_reporter (Logs_fmt.reporter ());
 
   let use_trafilatura =
-    match Sys.command "command -v trafilatura > /dev/null 2>&1" with
-    | 0 ->
-        Logs.info (fun m -> m "Trafilatura is available");
-        true
-    | _ ->
-        Logs.info (fun m ->
-            m "Trafilatura is not available, falling back to jina reader");
-        false
+    if Sys.win32 then (
+      Logs.info (fun m -> m "We are on windows, falling back to jina reader");
+      false)
+    else
+      match Sys.command "command -v trafilatura > /dev/null 2>&1" with
+      | 0 ->
+          Logs.info (fun m -> m "Trafilatura is available");
+          true
+      | _ ->
+          Logs.info (fun m ->
+              m "Trafilatura is not available, falling back to jina reader");
+          false
   in
 
   Eio_main.run @@ fun env ->
