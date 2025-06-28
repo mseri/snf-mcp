@@ -1,393 +1,11 @@
 open Eio.Std
-open Mcp_sdk
-open Cohttp_eio
-
-let whitespace_re = Re.compile Re.(rep1 blank)
-let wiki_opensnippet_re = Re.compile (Re.str "<span class=\"searchmatch\">")
-let wiki_closesnippet_re = Re.compile (Re.str "</span>")
-
-module Https = struct
-  let authenticator =
-    match Ca_certs.authenticator () with
-    | Ok x -> x
-    | Error (`Msg m) ->
-        Fmt.failwith "Failed to create system store X509 authenticator: %s" m
-
-  let https ~authenticator =
-    let () = Mirage_crypto_rng_unix.use_default () in
-    let tls_config =
-      match Tls.Config.client ~authenticator () with
-      | Error (`Msg msg) -> failwith ("tls configuration problem: " ^ msg)
-      | Ok tls_config -> tls_config
-    in
-    fun uri raw ->
-      let host =
-        Uri.host uri
-        |> Option.map (fun x -> Domain_name.(host_exn (of_string_exn x)))
-      in
-      Tls_eio.client_of_flow ?host tls_config raw
-
-  let make () = https ~authenticator
-end
+open Snf
 
 (* Helper for extracting string value from JSON arguments *)
 let get_string_param json name =
   match Yojson.Safe.Util.(member name json |> to_string_option) with
   | Some value -> Ok value
   | _ -> Error (Printf.sprintf "Missing or invalid string parameter: %s" name)
-
-(* A simple record to hold search result data *)
-type search_result = {
-  title : string;
-  link : string;
-  snippet : string;
-  position : int;
-}
-
-(* Module to handle rate limiting using Eio *)
-module Rate_limiter = struct
-  type t = {
-    requests_per_minute : int;
-    requests : float Queue.t;
-    mutex : Eio.Mutex.t;
-  }
-
-  let create requests_per_minute =
-    {
-      requests_per_minute;
-      requests = Queue.create ();
-      mutex = Eio.Mutex.create ();
-    }
-
-  let acquire t clock =
-    Eio.Mutex.use_rw t.mutex ~protect:true @@ fun () ->
-    let now = Eio.Time.now clock in
-    (* Remove requests older than 1 minute *)
-    let one_minute_ago = now -. 60.0 in
-    while
-      (not (Queue.is_empty t.requests))
-      && Queue.peek t.requests < one_minute_ago
-    do
-      ignore (Queue.pop t.requests)
-    done;
-
-    (* If we've made too many requests, wait *)
-    if Queue.length t.requests >= t.requests_per_minute then (
-      let oldest_request = Queue.peek t.requests in
-      let wait_time = 60.0 -. (now -. oldest_request) in
-      if wait_time > 0. then Eio.Time.sleep clock wait_time;
-
-      Queue.push now t.requests)
-end
-
-module Web_searcher = struct
-  let ddg_uri = Uri.of_string "https://html.duckduckgo.com/html"
-  let wikipedia_uri = Uri.of_string "https://en.wikipedia.org/w/api.php"
-
-  (* Regular expressions for parsing Wikipedia snippets *)
-  let headers =
-    Http.Header.of_list
-      [
-        ( "User-Agent",
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
-           (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36" );
-        ("Content-Type", "application/x-www-form-urlencoded");
-        ("charset", "utf-8");
-      ]
-
-  let format_results_for_llm (results : search_result list) : string =
-    if List.length results = 0 then
-      "No results were found for your search query. This could be due to bot \
-       detection mechanics or the query returned no matches. Please try \
-       rephrasing your search or try again in a few minutes."
-    else
-      let result_strings =
-        List.map
-          (fun r ->
-            Printf.sprintf "%d. %s\nURL: %s\nSummary: %s" r.position r.title
-              r.link r.snippet)
-          results
-      in
-      Printf.sprintf "Found %d search results:\n\n" (List.length results)
-      ^ String.concat "\n\n" result_strings
-
-  let search ~sw ~net ~clock ~rate_limiter query max_results =
-    try
-      Rate_limiter.acquire rate_limiter clock;
-      Log.infof "Searching DuckDuckGo for: %s" query;
-
-      let uri =
-        Uri.add_query_params ddg_uri
-          [ ("q", [ query ]); ("b", [ "" ]); ("kl", [ "" ]) ]
-      in
-      let client = Client.make ~https:(Some (Https.make ())) net in
-      Log.infof "BODY: %s\n"
-        (Uri.encoded_of_query
-           [ ("q", [ query ]); ("b", [ "" ]); ("kl", [ "" ]) ]);
-
-      let resp, body = Client.get ~sw ~headers client uri in
-
-      if Http.Status.compare resp.status `OK <> 0 then
-        Error
-          (Printf.sprintf "HTTP Error: %s" (Http.Status.to_string resp.status))
-      else
-        let html = Eio.Buf_read.(parse_exn take_all) body ~max_size:max_int in
-
-        (* Parse the HTML response *)
-        let soup = Soup.parse html in
-
-        let results =
-          soup |> Soup.select ".result" |> Soup.to_list
-          |> List.filter_map (fun result ->
-                 let title_elem =
-                   result |> Soup.select_one ".result__title > a"
-                 in
-
-                 Option.bind title_elem (function title_node ->
-                     let title =
-                       title_node |> Soup.trimmed_texts |> String.concat ""
-                     in
-                     let link =
-                       match Soup.attribute "href" title_node with
-                       | Some href when not (String.contains href 'y') -> (
-                           let uri = Uri.of_string href in
-                           match Uri.get_query_param uri "uddg" with
-                           | Some encoded_url ->
-                               Some (Uri.pct_decode encoded_url)
-                           | None -> Some href)
-                       | _ -> None
-                     in
-                     let snippet =
-                       let snippet_elem =
-                         result |> Soup.select_one ".result__snippet"
-                       in
-                       match snippet_elem with
-                       | Some snippet_node ->
-                           snippet_node |> Soup.trimmed_texts
-                           |> String.concat ""
-                       | None -> ""
-                     in
-                     Option.map
-                       (fun l -> { title; link = l; snippet; position = 0 })
-                       link))
-        in
-        let final_results =
-          results |> List.mapi (fun i r -> { r with position = i + 1 })
-          |> fun l -> List.filteri (fun i _ -> i < max_results) l
-        in
-        Log.infof "Successfully found %d results" (List.length final_results);
-        Ok final_results
-    with ex -> Error (Printexc.to_string ex)
-
-  let search_wikipedia ~sw ~net ~clock ~rate_limiter ?(max_results = 10) query =
-    let parse_wiki (json : Yojson.Safe.t) =
-      let open Yojson.Safe.Util in
-      let fields = json |> member "query" |> member "search" |> to_list in
-      let results =
-        List.mapi
-          (fun i item ->
-            let title = item |> member "title" |> to_string in
-            let title_for_url =
-              String.trim title
-              |> Re.replace_string ~all:true whitespace_re ~by:"_"
-              |> Uri.pct_encode
-            in
-            let snippet =
-              item |> member "snippet" |> to_string
-              |> Re.replace_string ~all:true wiki_opensnippet_re ~by:""
-              |> Re.replace_string ~all:true wiki_closesnippet_re ~by:""
-            in
-            let position = i + 1 in
-            let link =
-              Printf.sprintf "https://en.wikipedia.org/wiki/%s" title_for_url
-            in
-            { title; link; snippet; position })
-          fields
-      in
-      Ok results
-    in
-
-    try
-      Rate_limiter.acquire rate_limiter clock;
-      Log.infof "Searching Wikipedia for: %s" query;
-
-      let params =
-        [
-          ("action", "query");
-          ("format", "json");
-          ("list", "search");
-          ("srsearch", query);
-          ("srlimit", string_of_int max_results);
-          ("srprop", "snippet|titlesnippet");
-        ]
-      in
-
-      let url = Uri.add_query_params' wikipedia_uri params in
-
-      let client = Client.make ~https:(Some (Https.make ())) net in
-
-      match Client.get ~sw ~headers client url with
-      | resp, body when resp.status = `OK ->
-          let json_content =
-            Eio.Buf_read.(parse_exn take_all) body ~max_size:max_int
-          in
-          let json = Yojson.Safe.from_string json_content in
-          parse_wiki json
-      | resp, body ->
-          let _ = Eio.Flow.read_all body in
-          Error
-            (Printf.sprintf "Wikipedia API request failed (%s)"
-               (Http.Status.to_string resp.status))
-    with ex ->
-      Error
-        (Printf.sprintf
-           "An unexpected error occurred while searching Wikipedia (%s)"
-           (Printexc.to_string ex))
-end
-
-(* Module for fetching and parsing web content *)
-module Web_content_fetcher = struct
-  let headers =
-    Http.Header.of_list
-      [
-        ( "User-Agent",
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" );
-      ]
-
-  let truncate_at max_length content =
-    if max_length > 0 && String.length content > max_length then
-      String.sub content 0 max_length ^ "... [content truncated]"
-    else content
-
-  let rec get_with_redirects ~sw ~client ~headers ~max_redirects current_url =
-    let current_url =
-      if
-        String.starts_with ~prefix:"https://" current_url
-        || String.starts_with ~prefix:"https://" current_url
-      then current_url
-      else (
-        Log.infof
-          "No http transport specified in '%s', adding https:// to the url."
-          current_url;
-        Printf.sprintf "https://%s" current_url)
-    in
-
-    (* Check for too many redirects *)
-    if max_redirects < 0 then Error "Too many redirects"
-    else
-      let resp, body =
-        Client.get ~sw ~headers client (Uri.of_string current_url)
-      in
-      match resp.status with
-      | `OK -> Ok body
-      | `Moved_permanently | `Found | `See_other | `Temporary_redirect
-      | `Permanent_redirect -> (
-          match Http.Header.get resp.headers "location" with
-          | None ->
-              (* Drain body on error before returning *)
-              let _ = Eio.Flow.read_all body in
-              Error "Redirect response missing a Location header"
-          | Some new_url ->
-              (* Drain body before making the next request *)
-              let _ = Eio.Flow.read_all body in
-              let new_uri =
-                Uri.resolve ""
-                  (Uri.of_string current_url)
-                  (Uri.of_string new_url)
-              in
-              get_with_redirects ~sw ~client ~headers
-                ~max_redirects:(max_redirects - 1) (Uri.to_string new_uri))
-      | status ->
-          let _ = Eio.Flow.read_all body in
-          Error
-            (Printf.sprintf "Could not access the webpage (%s)"
-               (Http.Status.to_string status))
-
-  let fetch_markdown ~sw ~net ~clock ~rate_limiter ?(max_length = 8192)
-      ~use_trafilatura url =
-    try
-      if use_trafilatura then
-        let ic =
-          Unix.open_process_args_in "trafilatura" [| "markdown"; "-u"; url |]
-        in
-        let output = In_channel.input_all ic in
-        let exit_code = Unix.close_process_in ic in
-        match exit_code with
-        | WEXITED 0 ->
-            let truncated_text = truncate_at max_length output in
-            Log.infof "Successfully fetched and parsed content (%d characters)"
-              (String.length truncated_text);
-            Ok truncated_text
-        | WEXITED n | WSIGNALED n | WSTOPPED n ->
-            Error
-              (Printf.sprintf
-                 "Failed to fetch content using trafilatura (error code %d): %s"
-                 n output)
-      else (
-        Rate_limiter.acquire rate_limiter clock;
-        Log.infof "Fetching content from: %s" url;
-        let client = Client.make ~https:(Some (Https.make ())) net in
-        let url = "https://r.jina.ai/" ^ url in
-        let headers = Http.Header.add headers "X-Base" "final" in
-
-        (* Use the get_with_redirects function to handle redirects *)
-        match Client.get ~sw ~headers client (Uri.of_string url) with
-        | resp, body when resp.status = `OK ->
-            let content =
-              Eio.Buf_read.(parse_exn take_all) body ~max_size:max_int
-            in
-            let truncated_text = truncate_at max_length content in
-            Log.infof "Successfully fetched content (%d characters)"
-              (String.length truncated_text);
-            Ok truncated_text
-        | resp, body ->
-            let _ = Eio.Flow.read_all body in
-            Error
-              (Printf.sprintf "Could not access the webpage (%s)"
-                 (Http.Status.to_string resp.status)))
-    with ex ->
-      Error
-        (Printf.sprintf
-           "An unexpected error occurred while fetching the webpage (%s)"
-           (Printexc.to_string ex))
-
-  let fetch_and_parse ~sw ~net ~clock ~rate_limiter ?(max_length = 8192) url =
-    try
-      Rate_limiter.acquire rate_limiter clock;
-      Log.infof "Fetching content from: %s" url;
-      let client = Client.make ~https:(Some (Https.make ())) net in
-
-      match get_with_redirects ~sw ~client ~headers ~max_redirects:5 url with
-      | Error msg -> Error msg
-      | Ok body ->
-          let html = Eio.Buf_read.(parse_exn take_all) body ~max_size:max_int in
-          let soup = Soup.parse html in
-
-          (* Remove script, style, and navigation elements *)
-          List.iter
-            (fun selector ->
-              soup |> Soup.select selector |> Soup.iter Soup.delete)
-            [ "script"; "style"; "nav"; "header"; "footer" ];
-
-          (* Get and clean up text content *)
-          let text =
-            soup |> Soup.texts |> List.map String.trim
-            |> List.filter (fun s -> String.length s > 0)
-            |> String.concat " "
-            |> Re.replace_string ~all:true whitespace_re
-                 ~by:" " (* Replace multiple whitespace with a single space *)
-          in
-
-          let truncated_text = truncate_at max_length text in
-          Log.infof "Successfully fetched and parsed content (%d characters)"
-            (String.length truncated_text);
-          Ok truncated_text
-    with ex ->
-      Error
-        (Printf.sprintf
-           "An unexpected error occurred while fetching the webpage (%s)"
-           (Printexc.to_string ex))
-end
 
 (* Command-line argument parsing *)
 type server_mode = Stdio | Port of int
@@ -414,10 +32,11 @@ let () =
   let use_trafilatura =
     match Sys.command "command -v trafilatura > /dev/null 2>&1" with
     | 0 ->
-        Log.info "Trafilatura is available";
+        Mcp_sdk.Log.info "Trafilatura is available";
         true
     | _ ->
-        Log.info "Trafilatura is not available, falling back to jina reader";
+        Mcp_sdk.Log.info
+          "Trafilatura is not available, falling back to jina reader";
         false
   in
 
@@ -428,13 +47,13 @@ let () =
   let clock = Eio.Stdenv.clock env in
 
   let server =
-    create_server ~name:"ocaml-search-and-fetch" ~version:"0.2.0"
+    Mcp_sdk.create_server ~name:"ocaml-search-and-fetch" ~version:"0.2.0"
       ~protocol_version:"2025-06-28" ()
-    |> fun server -> configure_server server ~with_tools:true ()
+    |> fun server -> Mcp_sdk.configure_server server ~with_tools:true ()
   in
 
   let _ =
-    add_tool server ~name:"search"
+    Mcp_sdk.add_tool server ~name:"search"
       ~description:"Search DuckDuckGo and return formatted results."
       ~schema_properties:
         [
@@ -449,7 +68,7 @@ let () =
         match
           (get_string_param args "query", get_string_param args "max_results")
         with
-        | Error msg, _ -> Tool.create_error_result msg
+        | Error msg, _ -> Mcp_sdk.Tool.create_error_result msg
         | Ok query, max_results -> (
             let max_results =
               match max_results with
@@ -457,19 +76,19 @@ let () =
               | Ok len -> Option.value (int_of_string_opt len) ~default:10
             in
             match
-              Web_searcher.search ~sw ~net ~clock
-                ~rate_limiter:search_rate_limiter query max_results
+              Search.search ~sw ~net ~clock ~rate_limiter:search_rate_limiter
+                query max_results
             with
             | Ok results ->
-                let results = Web_searcher.format_results_for_llm results in
-                Tool.create_tool_result
+                let results = Search.format_results_for_llm results in
+                Mcp_sdk.Tool.create_tool_result
                   [ Mcp.make_text_content results ]
                   ~is_error:false
-            | Error msg -> Tool.create_error_result msg))
+            | Error msg -> Mcp_sdk.Tool.create_error_result msg))
   in
 
   let _ =
-    add_tool server ~name:"search_wikipedia"
+    Mcp_sdk.add_tool server ~name:"search_wikipedia"
       ~description:"Search Wikipedia and return formatted results."
       ~schema_properties:
         [
@@ -484,7 +103,7 @@ let () =
         match
           (get_string_param args "query", get_string_param args "max_results")
         with
-        | Error msg, _ -> Tool.create_error_result msg
+        | Error msg, _ -> Mcp_sdk.Tool.create_error_result msg
         | Ok query, max_results -> (
             let max_results =
               match max_results with
@@ -492,19 +111,19 @@ let () =
               | Ok len -> Option.value (int_of_string_opt len) ~default:10
             in
             match
-              Web_searcher.search_wikipedia ~sw ~net ~clock
+              Search.search_wikipedia ~sw ~net ~clock
                 ~rate_limiter:search_rate_limiter ~max_results query
             with
             | Ok results ->
-                let results = Web_searcher.format_results_for_llm results in
-                Tool.create_tool_result
+                let results = Search.format_results_for_llm results in
+                Mcp_sdk.Tool.create_tool_result
                   [ Mcp.make_text_content results ]
                   ~is_error:false
-            | Error msg -> Tool.create_error_result msg))
+            | Error msg -> Mcp_sdk.Tool.create_error_result msg))
   in
 
   let _ =
-    add_tool server ~name:"fetch_content"
+    Mcp_sdk.add_tool server ~name:"fetch_content"
       ~description:"Fetch and parse content from a webpage URL."
       ~schema_properties:
         [
@@ -520,7 +139,7 @@ let () =
         match
           (get_string_param args "url", get_string_param args "max_length")
         with
-        | Error msg, _ -> Tool.create_error_result msg
+        | Error msg, _ -> Mcp_sdk.Tool.create_error_result msg
         | Ok url, max_length -> (
             let max_length =
               match max_length with
@@ -528,18 +147,18 @@ let () =
               | Ok len -> int_of_string_opt len
             in
             match
-              Web_content_fetcher.fetch_and_parse ~sw ~net ~clock
+              Fetch.fetch_and_parse ~sw ~net ~clock
                 ~rate_limiter:fetch_rate_limiter ?max_length url
             with
             | Ok content ->
-                Tool.create_tool_result
+                Mcp_sdk.Tool.create_tool_result
                   [ Mcp.make_text_content content ]
                   ~is_error:false
-            | Error msg -> Tool.create_error_result msg))
+            | Error msg -> Mcp_sdk.Tool.create_error_result msg))
   in
 
   let _ =
-    add_tool server ~name:"fetch_markdown"
+    Mcp_sdk.add_tool server ~name:"fetch_markdown"
       ~description:"Fetch and parse content from a webpage URL as Markdown."
       ~schema_properties:
         [
@@ -555,7 +174,7 @@ let () =
         match
           (get_string_param args "url", get_string_param args "max_length")
         with
-        | Error msg, _ -> Tool.create_error_result msg
+        | Error msg, _ -> Mcp_sdk.Tool.create_error_result msg
         | Ok url, max_length -> (
             let max_length =
               match max_length with
@@ -564,26 +183,26 @@ let () =
             in
             (* Instead of using max_length to cut the content, we should use Cursor.t to allow for batched fetching of content in chunks *)
             match
-              Web_content_fetcher.fetch_markdown ~sw ~net ~clock
+              Fetch.fetch_markdown ~sw ~net ~clock
                 ~rate_limiter:fetch_rate_limiter ?max_length ~use_trafilatura
                 url
             with
             | Ok content ->
-                Tool.create_tool_result
+                Mcp_sdk.Tool.create_tool_result
                   [ Mcp.make_text_content content ]
                   ~is_error:false
-            | Error msg -> Tool.create_error_result msg))
+            | Error msg -> Mcp_sdk.Tool.create_error_result msg))
   in
 
   let on_error exn =
-    Log.errorf "Unhandled server error: %s\n%s" (Printexc.to_string exn)
+    Mcp_sdk.Log.errorf "Unhandled server error: %s\n%s" (Printexc.to_string exn)
       (Printexc.get_backtrace ())
   in
 
   match !server_mode with
   | Stdio ->
-      Log.infof "Starting MCP server in stdio mode";
+      Mcp_sdk.Log.infof "Starting MCP server in stdio mode";
       Mcp_server.run_sdtio_server env server
   | Port port ->
-      Log.infof "Starting MCP server on port %d" port;
+      Mcp_sdk.Log.infof "Starting MCP server on port %d" port;
       Mcp_server.run_server env server ~port ~on_error

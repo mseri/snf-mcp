@@ -1,17 +1,14 @@
-(executable
- (public_name ddg_mcp)
+(library
+ (name snf)
  (libraries
   ca-certs
-  mcp.sdk
-  mcp.server
-  eio
-  eio_main
   cohttp
   cohttp-eio
+  eio
   lambdasoup
+  mcp.sdk
   mirage-crypto-rng.unix
   re
-  snf
   tls
   tls-eio
   uri))
