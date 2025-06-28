@@ -17,4 +17,5 @@
   http
   cohttp-eio
   eio_main
-  eio))
+  eio
+  logs))

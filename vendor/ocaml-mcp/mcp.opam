@@ -13,6 +13,7 @@ depends: [
   "cohttp-eio"
   "eio_main"
   "eio"
+  "logs"
   "odoc" {with-doc}
 ]
 build: [

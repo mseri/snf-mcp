@@ -15,7 +15,7 @@
 (library
  (name mcp_sdk)
  (public_name mcp.sdk)
- (libraries mcp mcp_rpc jsonrpc unix yojson)
+ (libraries mcp mcp_rpc jsonrpc unix yojson logs logs.fmt)
  (modules mcp_sdk)
  (flags
   (:standard -w -67 -w -27 -w -32)))

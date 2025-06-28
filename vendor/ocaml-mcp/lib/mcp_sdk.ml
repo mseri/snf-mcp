@@ -6,6 +6,8 @@ let version = "0.1.0"
 
 (* Logging utilities *)
 module Log = struct
+  let src = Logs.Src.create "mcp_sdk" ~doc:"MCP SDK logging"
+
   type level = Debug | Info | Warning | Error
 
   let string_of_level = function
@@ -15,24 +17,64 @@ module Log = struct
     | Error -> "ERROR"
 
   let logf level fmt =
-    Printf.fprintf stderr "[%s] " (string_of_level level);
-    Printf.kfprintf
-      (fun oc ->
-        Printf.fprintf oc "\n";
-        flush oc)
-      stderr fmt
+    let log_func =
+      match level with
+      | Debug -> Logs.debug ~src
+      | Info -> Logs.info ~src
+      | Warning -> Logs.warn ~src
+      | Error -> Logs.err ~src
+    in
+    Printf.ksprintf (fun msg -> log_func (fun m -> m "%s" msg)) fmt
 
-  let debugf fmt = logf Debug fmt
-  let infof fmt = logf Info fmt
-  let warningf fmt = logf Warning fmt
-  let errorf fmt = logf Error fmt
+  let debugf fmt =
+    Printf.ksprintf (fun msg -> Logs.debug ~src (fun m -> m "%s" msg)) fmt
+
+  let infof fmt =
+    Printf.ksprintf (fun msg -> Logs.info ~src (fun m -> m "%s" msg)) fmt
+
+  let warningf fmt =
+    Printf.ksprintf (fun msg -> Logs.warn ~src (fun m -> m "%s" msg)) fmt
+
+  let errorf fmt =
+    Printf.ksprintf (fun msg -> Logs.err ~src (fun m -> m "%s" msg)) fmt
 
   (* Backward compatibility functions that take a simple string *)
-  let log level msg = logf level "%s" msg
-  let debug msg = debugf "%s" msg
-  let info msg = infof "%s" msg
-  let warning msg = warningf "%s" msg
-  let error msg = errorf "%s" msg
+  let log level msg =
+    match level with
+    | Debug -> Logs.debug ~src (fun m -> m "%s" msg)
+    | Info -> Logs.info ~src (fun m -> m "%s" msg)
+    | Warning -> Logs.warn ~src (fun m -> m "%s" msg)
+    | Error -> Logs.err ~src (fun m -> m "%s" msg)
+
+  let debug msg = Logs.debug ~src (fun m -> m "%s" msg)
+  let info msg = Logs.info ~src (fun m -> m "%s" msg)
+  let warning msg = Logs.warn ~src (fun m -> m "%s" msg)
+  let error msg = Logs.err ~src (fun m -> m "%s" msg)
+
+  (* (** Initialize default logging reporter *)
+  let init_reporter () =
+    if not (Logs.reporter () == Logs.nop_reporter) then
+      () (* Reporter already set up *)
+    else
+      let reporter = Logs_format.reporter () in
+      Logs.set_reporter reporter *)
+
+  (** Set log level at runtime *)
+  let set_level = function
+    | Debug -> Logs.Src.set_level src (Some Logs.Debug)
+    | Info -> Logs.Src.set_level src (Some Logs.Info)
+    | Warning -> Logs.Src.set_level src (Some Logs.Warning)
+    | Error -> Logs.Src.set_level src (Some Logs.Error)
+
+  (** Get current log level *)
+  let get_level () =
+    match Logs.Src.level src with
+    | Some Logs.Debug -> Some Debug
+    | Some Logs.Info -> Some Info
+    | Some Logs.Warning -> Some Warning
+    | Some Logs.Error -> Some Error
+    | Some Logs.App -> Some Info (* Map App to Info *)
+    | None -> None
 end
 
 (* Context for tools and resources *)

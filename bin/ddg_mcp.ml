@@ -20,11 +20,21 @@ let spec =
     ( "--stdio",
       Arg.Unit set_stdio,
       " Use stdio for communication instead of port (default)" );
+    ( "--debug",
+      Arg.Unit (fun () -> Mcp_sdk.Log.set_level Debug),
+      " Enable debug logging" );
+    ( "--verbose",
+      Arg.Unit (fun () -> Mcp_sdk.Log.set_level Info),
+      " Enable verbose logging" );
+    ( "--quiet",
+      Arg.Unit (fun () -> Mcp_sdk.Log.set_level Error),
+      " Suppress non-error logs (default)" );
   ]
 
 let usage_msg = "ddg_mcp [--serve PORT | --stdio]"
 
 let () =
+  let () = Mcp_sdk.Log.(set_level Error) in
   Arg.parse spec (fun _ -> ()) usage_msg;
 
   Random.self_init ();
