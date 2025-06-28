@@ -313,7 +313,7 @@ let _ =
           ]
           ~is_error:false
       with Failure msg ->
-        Log.errorf "Error in multimodal tool: %s" msg;
+        Logs.err (fun m -> m "Error in multimodal tool: %s" msg);
         Tool.create_tool_result
           [ Mcp.make_text_content (Printf.sprintf "Error: %s" msg) ]
           ~is_error:true)
@@ -346,7 +346,7 @@ let _ =
             [ Mcp.make_image_content image_data "image/gif" ]
             ~is_error:false
       with Failure msg ->
-        Log.errorf "Error in generate_image tool: %s" msg;
+        Logs.err (fun m -> m "Error in generate_image tool: %s" msg);
         Tool.create_tool_result
           [ Mcp.make_text_content (Printf.sprintf "Error: %s" msg) ]
           ~is_error:true)
@@ -388,7 +388,7 @@ let _ =
             [ Mcp.make_audio_content audio_data "audio/wav" ]
             ~is_error:false
       with Failure msg ->
-        Log.errorf "Error in generate_audio tool: %s" msg;
+        Logs.err (fun m -> m "Error in generate_audio tool: %s" msg);
         Tool.create_tool_result
           [ Mcp.make_text_content (Printf.sprintf "Error: %s" msg) ]
           ~is_error:true)
@@ -427,6 +427,7 @@ let _ =
 
 (* Run the server with the default scheduler *)
 let () =
+  Logs.set_reporter (Logs.format_reporter ());
   Random.self_init ();
   (* Initialize random generator *)
   Eio_main.run @@ fun env -> Mcp_server.run_server env server

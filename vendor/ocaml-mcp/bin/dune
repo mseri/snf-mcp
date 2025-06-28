@@ -1,12 +1,12 @@
 (executable
  (name capitalize_sdk)
  (modules capitalize_sdk)
- (libraries mcp mcp_server yojson eio_main eio))
+ (libraries logs mcp mcp_server yojson eio_main eio))
 
 (executable
  (name multimodal_sdk)
  (modules multimodal_sdk)
- (libraries mcp mcp_sdk mcp_server yojson eio_main eio))
+ (libraries logs mcp mcp_sdk mcp_server yojson eio_main eio))
 
 (executable
  (name ocaml_eval_sdk)
@@ -15,6 +15,7 @@
  (flags
   (:standard -w -32 -w -33))
  (libraries
+  logs
   mcp
   mcp_sdk
   mcp_server
@@ -26,4 +27,4 @@
 (executable
  (name markdown_book_sdk)
  (modules markdown_book_sdk)
- (libraries mcp mcp_sdk mcp_server yojson eio_main eio))
+ (libraries logs mcp mcp_sdk mcp_server yojson eio_main eio))

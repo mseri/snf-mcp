@@ -40,15 +40,17 @@ let format_results_for_llm (results : search_result list) : string =
 let search ~sw ~net ~clock ~rate_limiter query max_results =
   try
     Rate_limiter.acquire rate_limiter clock;
-    Mcp_sdk.Log.infof "Searching DuckDuckGo for: %s" query;
+    Logs.info (fun m -> m "Searching DuckDuckGo for: %s" query);
 
     let uri =
       Uri.add_query_params ddg_uri
         [ ("q", [ query ]); ("b", [ "" ]); ("kl", [ "" ]) ]
     in
     let client = Cohttp_eio.Client.make ~https:(Some (Https.make ())) net in
-    Mcp_sdk.Log.infof "BODY: %s\n"
-      (Uri.encoded_of_query [ ("q", [ query ]); ("b", [ "" ]); ("kl", [ "" ]) ]);
+    Logs.info (fun m ->
+        m "BODY: %s\n"
+          (Uri.encoded_of_query
+             [ ("q", [ query ]); ("b", [ "" ]); ("kl", [ "" ]) ]));
 
     let resp, body = Cohttp_eio.Client.get ~sw ~headers client uri in
 
@@ -98,8 +100,8 @@ let search ~sw ~net ~clock ~rate_limiter query max_results =
         results |> List.mapi (fun i r -> { r with position = i + 1 })
         |> fun l -> List.filteri (fun i _ -> i < max_results) l
       in
-      Mcp_sdk.Log.infof "Successfully found %d results"
-        (List.length final_results);
+      Logs.info (fun m ->
+          m "Successfully found %d results" (List.length final_results));
       Ok final_results
   with ex -> Error (Printexc.to_string ex)
 
@@ -133,7 +135,7 @@ let search_wikipedia ~sw ~net ~clock ~rate_limiter ?(max_results = 10) query =
 
   try
     Rate_limiter.acquire rate_limiter clock;
-    Mcp_sdk.Log.infof "Searching Wikipedia for: %s" query;
+    Logs.info (fun m -> m "Searching Wikipedia for: %s" query);
 
     let params =
       [

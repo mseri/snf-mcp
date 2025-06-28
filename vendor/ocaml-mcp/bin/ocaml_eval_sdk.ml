@@ -150,10 +150,12 @@ let _ =
           [ Mcp.make_text_content output ]
           ~is_error:(not success)
       with Failure msg ->
-        Log.errorf "Error in OCaml eval tool: %s" msg;
+        Logs.err (fun m -> m "Error in OCaml eval tool: %s" msg);
         Tool.create_tool_result
           [ Mcp.make_text_content (Printf.sprintf "Error: %s" msg) ]
           ~is_error:true)
 
 (* Run the server with the default scheduler *)
-let () = Eio_main.run @@ fun env -> Mcp_server.run_server env server
+let () =
+  Logs.set_reporter (Logs.format_reporter ());
+  Eio_main.run @@ fun env -> Mcp_server.run_server env server

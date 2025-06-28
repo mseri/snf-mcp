@@ -34,7 +34,7 @@ let _ =
         TextContent.yojson_of_t
           TextContent.{ text = capitalized_text; annotations = None }
       with Failure msg ->
-        Log.errorf "Error in capitalize tool: %s" msg;
+        Logs.err (fun m -> m "Error in capitalize tool: %s" msg);
         TextContent.yojson_of_t
           TextContent.
             { text = Printf.sprintf "Error: %s" msg; annotations = None })
@@ -79,4 +79,6 @@ let _ =
           };
       ])
 
-let () = Eio_main.run @@ fun env -> Mcp_server.run_server env server
+let () =
+  Logs.set_reporter (Logs.format_reporter ());
+  Eio_main.run @@ fun env -> Mcp_server.run_server env server

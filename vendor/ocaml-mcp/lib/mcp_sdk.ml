@@ -3,71 +3,9 @@ open Jsonrpc
 
 (* SDK version *)
 let version = "0.1.0"
+let src = Logs.Src.create "mcp.sdk" ~doc:"mcp.sdk logging"
 
-(* Logging utilities *)
-module Log = struct
-  let src = Logs.Src.create "mcp_sdk" ~doc:"MCP SDK logging"
-
-  type level = Debug | Info | Warning | Error
-
-  let string_of_level = function
-    | Debug -> "DEBUG"
-    | Info -> "INFO"
-    | Warning -> "WARNING"
-    | Error -> "ERROR"
-
-  let logf level fmt =
-    let log_func =
-      match level with
-      | Debug -> Logs.debug ~src
-      | Info -> Logs.info ~src
-      | Warning -> Logs.warn ~src
-      | Error -> Logs.err ~src
-    in
-    Printf.ksprintf (fun msg -> log_func (fun m -> m "%s" msg)) fmt
-
-  let debugf fmt =
-    Printf.ksprintf (fun msg -> Logs.debug ~src (fun m -> m "%s" msg)) fmt
-
-  let infof fmt =
-    Printf.ksprintf (fun msg -> Logs.info ~src (fun m -> m "%s" msg)) fmt
-
-  let warningf fmt =
-    Printf.ksprintf (fun msg -> Logs.warn ~src (fun m -> m "%s" msg)) fmt
-
-  let errorf fmt =
-    Printf.ksprintf (fun msg -> Logs.err ~src (fun m -> m "%s" msg)) fmt
-
-  (* Backward compatibility functions that take a simple string *)
-  let log level msg =
-    match level with
-    | Debug -> Logs.debug ~src (fun m -> m "%s" msg)
-    | Info -> Logs.info ~src (fun m -> m "%s" msg)
-    | Warning -> Logs.warn ~src (fun m -> m "%s" msg)
-    | Error -> Logs.err ~src (fun m -> m "%s" msg)
-
-  let debug msg = Logs.debug ~src (fun m -> m "%s" msg)
-  let info msg = Logs.info ~src (fun m -> m "%s" msg)
-  let warning msg = Logs.warn ~src (fun m -> m "%s" msg)
-  let error msg = Logs.err ~src (fun m -> m "%s" msg)
-
-  (** Set log level at runtime *)
-  let set_level = function
-    | Debug -> Logs.Src.set_level src (Some Logs.Debug)
-    | Info -> Logs.Src.set_level src (Some Logs.Info)
-    | Warning -> Logs.Src.set_level src (Some Logs.Warning)
-    | Error -> Logs.Src.set_level src (Some Logs.Error)
-
-  (** Get current log level *)
-  let get_level () =
-    match Logs.Src.level src with
-    | Some Logs.Debug -> Some Debug
-    | Some Logs.Info -> Some Info
-    | Some Logs.Warning -> Some Warning
-    | Some Logs.Error -> Some Error
-    | Some Logs.App -> Some Info (* Map App to Info *)
-    | None -> None
-end
+module Log = (val Logs.src_log src : Logs.LOG)
 
 (* Context for tools and resources *)
 module Context = struct
@@ -216,7 +154,7 @@ module Tool = struct
 
   (* Create a tool error result with structured content *)
   let create_error_result error =
-    Log.errorf "Error result: %s" error;
+    Logs.err (fun m -> m "Error result: %s" error);
     create_tool_result [ Mcp.make_text_content error ] ~is_error:true
 
   (* Handle tool execution errors *)
@@ -248,10 +186,11 @@ module Resource = struct
   let create ~uri ~name ?description ?mime_type ~handler () =
     (* Validate that the URI doesn't contain template variables *)
     if String.contains uri '{' || String.contains uri '}' then
-      Log.warningf
-        "Resource '%s' contains template variables. Consider using \
-         add_resource_template instead."
-        uri;
+      Logs.warn (fun m ->
+          m
+            "Resource '%s' contains template variables. Consider using \
+             add_resource_template instead."
+            uri);
     { uri; name; description; mime_type; handler }
 
   let to_json resource =

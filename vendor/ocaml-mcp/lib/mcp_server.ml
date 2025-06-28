@@ -2,6 +2,10 @@ open Mcp
 open Jsonrpc
 open Mcp_sdk
 
+let src = Logs.Src.create "mcp.sdk" ~doc:"mcp.sdk logging"
+
+module Log = (val Logs.src_log src : Logs.LOG)
+
 (* Create a proper JSONRPC error with code and data *)
 let create_jsonrpc_error id code message ?data () =
   let error_code = ErrorCode.to_int code in
@@ -10,14 +14,16 @@ let create_jsonrpc_error id code message ?data () =
 
 (* Process initialize request *)
 let handle_initialize server req =
-  Log.debug "Processing initialize request";
+  Log.debug (fun m -> m "Processing initialize request");
   let result =
     match req.JSONRPCMessage.params with
     | Some params ->
         let req_data = Initialize.Request.t_of_yojson params in
-        Log.debugf "Client info: %s v%s" req_data.client_info.name
-          req_data.client_info.version;
-        Log.debugf "Client protocol version: %s" req_data.protocol_version;
+        Logs.debug (fun m ->
+            m "Client info: %s v%s" req_data.client_info.name
+              req_data.client_info.version);
+        Log.debug (fun m ->
+            m "Client protocol version: %s" req_data.protocol_version);
 
         (* Create initialize response *)
         let result =
@@ -31,14 +37,14 @@ let handle_initialize server req =
         in
         Initialize.Result.yojson_of_t result
     | None ->
-        Log.error "Missing params for initialize request";
+        Log.err (fun m -> m "Missing params for initialize request");
         `Assoc [ ("error", `String "Missing params for initialize request") ]
   in
   Some (create_response ~id:req.id ~result)
 
 (* Process tools/list request *)
 let handle_tools_list server (req : JSONRPCMessage.request) =
-  Log.debug "Processing tools/list request";
+  Log.debug (fun m -> m "Processing tools/list request");
   let tools_list = Tool.to_rpc_tools_list (tools server) in
   let response =
     Mcp_rpc.ToolsList.create_response ~id:req.id ~tools:tools_list ()
@@ -47,7 +53,7 @@ let handle_tools_list server (req : JSONRPCMessage.request) =
 
 (* Process prompts/list request *)
 let handle_prompts_list server (req : JSONRPCMessage.request) =
-  Log.debug "Processing prompts/list request";
+  Log.debug (fun m -> m "Processing prompts/list request");
   let prompts_list = Prompt.to_rpc_prompts_list (prompts server) in
   let response =
     Mcp_rpc.PromptsList.create_response ~id:req.id ~prompts:prompts_list ()
@@ -56,7 +62,7 @@ let handle_prompts_list server (req : JSONRPCMessage.request) =
 
 (* Process resources/list request *)
 let handle_resources_list server (req : JSONRPCMessage.request) =
-  Log.debug "Processing resources/list request";
+  Log.debug (fun m -> m "Processing resources/list request");
   let resources_list = Resource.to_rpc_resources_list (resources server) in
   let response =
     Mcp_rpc.ResourcesList.create_response ~id:req.id ~resources:resources_list
@@ -66,7 +72,7 @@ let handle_resources_list server (req : JSONRPCMessage.request) =
 
 (* Process resources/templates/list request *)
 let handle_resource_templates_list server (req : JSONRPCMessage.request) =
-  Log.debug "Processing resources/templates/list request";
+  Log.debug (fun m -> m "Processing resources/templates/list request");
   let templates_list =
     ResourceTemplate.to_rpc_resource_templates_list (resource_templates server)
   in
@@ -144,17 +150,17 @@ end
 
 (* Process resources/read request *)
 let handle_resources_read server (req : JSONRPCMessage.request) =
-  Log.debug "Processing resources/read request";
+  Log.debug (fun m -> m "Processing resources/read request");
   match req.JSONRPCMessage.params with
   | None ->
-      Log.error "Missing params for resources/read request";
+      Log.err (fun m -> m "Missing params for resources/read request");
       Some
         (create_jsonrpc_error req.id ErrorCode.InvalidParams
            "Missing params for resources/read request" ())
   | Some params -> (
       let req_data = Mcp_rpc.ResourcesRead.Request.t_of_yojson params in
       let uri = req_data.uri in
-      Log.debugf "Resource URI: %s" uri;
+      Log.debug (fun m -> m "Resource URI: %s" uri);
 
       (* Find matching resource or template *)
       match Resource_matcher.find_match server uri with
@@ -168,7 +174,7 @@ let handle_resources_read server (req : JSONRPCMessage.request) =
               ()
           in
 
-          Log.debugf "Handling direct resource: %s" resource.name;
+          Log.debug (fun m -> m "Handling direct resource: %s" resource.name);
 
           (* Call the resource handler *)
           match resource.handler ctx params with
@@ -195,7 +201,7 @@ let handle_resources_read server (req : JSONRPCMessage.request) =
               in
               Some response
           | Error err ->
-              Log.errorf "Error reading resource: %s" err;
+              Log.err (fun m -> m "Error reading resource: %s" err);
               Some
                 (create_jsonrpc_error req.id ErrorCode.InternalError
                    ("Error reading resource: " ^ err)
@@ -210,9 +216,9 @@ let handle_resources_read server (req : JSONRPCMessage.request) =
               ()
           in
 
-          Log.debugf "Handling resource template: %s with params: [%s]"
-            template.name
-            (String.concat ", " params);
+          Log.debug (fun m ->
+              m "Handling resource template: %s with params: [%s]" template.name
+                (String.concat ", " params));
 
           (* Call the template handler *)
           match template.handler ctx params with
@@ -239,13 +245,13 @@ let handle_resources_read server (req : JSONRPCMessage.request) =
               in
               Some response
           | Error err ->
-              Log.errorf "Error reading resource template: %s" err;
+              Log.err (fun m -> m "Error reading resource template: %s" err);
               Some
                 (create_jsonrpc_error req.id ErrorCode.InternalError
                    ("Error reading resource template: " ^ err)
                    ()))
       | Resource_matcher.NoMatch ->
-          Log.errorf "Resource not found: %s" uri;
+          Log.err (fun m -> m "Resource not found: %s" uri);
           Some
             (create_jsonrpc_error req.id ErrorCode.InvalidParams
                ("Resource not found: " ^ uri)
@@ -255,32 +261,33 @@ let handle_resources_read server (req : JSONRPCMessage.request) =
 let extract_tool_name params =
   match List.assoc_opt "name" params with
   | Some (`String name) ->
-      Log.debugf "Tool name: %s" name;
+      Log.debug (fun m -> m "Tool name: %s" name);
       Some name
   | _ ->
-      Log.error "Missing or invalid 'name' parameter in tool call";
+      Log.err (fun m -> m "Missing or invalid 'name' parameter in tool call");
       None
 
 (* Extract the tool arguments from params *)
 let extract_tool_arguments params =
   match List.assoc_opt "arguments" params with
   | Some args ->
-      Log.debugf "Tool arguments: %s" (Yojson.Safe.to_string args);
+      Log.debug (fun m -> m "Tool arguments: %s" (Yojson.Safe.to_string args));
       args
   | _ ->
-      Log.debug "No arguments provided for tool call, using empty object";
+      Log.debug (fun m ->
+          m "No arguments provided for tool call, using empty object");
       `Assoc [] (* Empty arguments is valid *)
 
 (* Execute a tool *)
 let execute_tool server ctx name args =
   try
     let tool = List.find (fun t -> t.Tool.name = name) (tools server) in
-    Log.debugf "Found tool: %s" name;
+    Log.debug (fun m -> m "Found tool: %s" name);
 
     (* Call the tool handler *)
     match tool.handler ctx args with
     | Ok result ->
-        Log.debug "Tool execution succeeded";
+        Log.debug (fun m -> m "Tool execution succeeded");
         result
     | Error err -> Tool.handle_execution_error err
   with
@@ -311,7 +318,7 @@ let json_to_rpc_content json =
 
 (* Process tools/call request *)
 let handle_tools_call server req =
-  Log.debug "Processing tools/call request";
+  Log.debug (fun m -> m "Processing tools/call request");
   match req.JSONRPCMessage.params with
   | Some (`Assoc params) -> (
       match extract_tool_name params with
@@ -343,34 +350,37 @@ let handle_tools_call server req =
             (create_jsonrpc_error req.id InvalidParams
                "Missing tool name parameter" ()))
   | _ ->
-      Log.error "Invalid params format for tools/call";
+      Log.err (fun m -> m "Invalid params format for tools/call");
       Some
         (create_jsonrpc_error req.id InvalidParams
            "Invalid params format for tools/call" ())
 
 (* Process ping request *)
 let handle_ping (req : JSONRPCMessage.request) =
-  Log.debug "Processing ping request";
+  Log.debug (fun m -> m "Processing ping request");
   Some (create_response ~id:req.JSONRPCMessage.id ~result:(`Assoc []))
 
 (* Handle notifications/initialized *)
 let handle_initialized (notif : JSONRPCMessage.notification) =
-  Log.debug
-    "Client initialization complete - Server is now ready to receive requests";
-  Log.debugf "Notification params: %s"
-    (match notif.JSONRPCMessage.params with
-    | Some p -> Yojson.Safe.to_string p
-    | None -> "null");
+  Log.debug (fun m ->
+      m
+        "Client initialization complete - Server is now ready to receive \
+         requests\n\
+        \ Notification params: %s"
+        (match notif.JSONRPCMessage.params with
+        | Some p -> Yojson.Safe.to_string p
+        | None -> "null"));
   None
 
 (* Process a single message using the MCP SDK *)
 let process_message server message =
   try
-    Log.debugf "Processing message: %s" (Yojson.Safe.to_string message);
+    Log.debug (fun m ->
+        m "Processing message: %s" (Yojson.Safe.to_string message));
     match JSONRPCMessage.t_of_yojson message with
     | JSONRPCMessage.Request req -> (
-        Log.debugf "Received request with method: %s"
-          (Method.to_string req.meth);
+        Log.debug (fun m ->
+            m "Received request with method: %s" (Method.to_string req.meth));
         match req.meth with
         | Method.Initialize -> handle_initialize server req
         | Method.ToolsList -> handle_tools_list server req
@@ -381,39 +391,46 @@ let process_message server message =
         | Method.ResourceTemplatesList ->
             handle_resource_templates_list server req
         | _ ->
-            Log.errorf "Unknown method received: %s" (Method.to_string req.meth);
+            Log.err (fun m ->
+                m "Unknown method received: %s" (Method.to_string req.meth));
             Some
               (create_jsonrpc_error req.id ErrorCode.MethodNotFound
                  ("Method not found: " ^ Method.to_string req.meth)
                  ()))
     | JSONRPCMessage.Notification notif -> (
-        Log.debugf "Received notification with method: %s"
-          (Method.to_string notif.meth);
+        Log.debug (fun m ->
+            m "Received notification with method: %s"
+              (Method.to_string notif.meth));
         match notif.meth with
         | Method.Initialized -> handle_initialized notif
         | _ ->
-            Log.debugf "Ignoring notification: %s" (Method.to_string notif.meth);
+            Log.debug (fun m ->
+                m "Ignoring notification: %s" (Method.to_string notif.meth));
             None)
     | JSONRPCMessage.Response _ ->
-        Log.error "Unexpected response message received";
+        Log.err (fun m -> m "Unexpected response message received");
         None
     | JSONRPCMessage.Error _ ->
-        Log.error "Unexpected error message received";
+        Log.err (fun m -> m "Unexpected error message received");
         None
   with
   | Json.Of_json (msg, _) ->
-      Log.errorf "JSON error: %s" msg;
+      Log.err (fun m -> m "JSON error: %s" msg);
       (* Can't respond with error because we don't have a request ID *)
       None
   | Yojson.Json_error msg ->
-      Log.errorf "JSON parse error: %s" msg;
+      Log.err (fun m -> m "JSON parse error: %s" msg);
       (* Can't respond with error because we don't have a request ID *)
       None
   | exc ->
-      Log.errorf "Exception during message processing: %s"
-        (Printexc.to_string exc);
-      Log.errorf "Backtrace: %s" (Printexc.get_backtrace ());
-      Log.errorf "Message was: %s" (Yojson.Safe.to_string message);
+      Log.err (fun m ->
+          m
+            "Exception during message processing: %s\n\
+             Backtrace: %s\n\
+             Message was: %s"
+            (Printexc.to_string exc)
+            (Printexc.get_backtrace ())
+            (Yojson.Safe.to_string message));
       None
 
 (* Extract a request ID from a potentially malformed message *)
@@ -431,26 +448,26 @@ let extract_request_id json =
 (* Handle processing for an input line *)
 let process_input_line server line =
   if line = "" then (
-    Log.debug "Empty line received, ignoring";
+    Log.debug (fun m -> m "Empty line received, ignoring");
     None)
   else (
-    Log.debugf "Raw input: %s" line;
+    Log.debug (fun m -> m "Raw input: %s" line);
     try
       let json = Yojson.Safe.from_string line in
-      Log.debug "Successfully parsed JSON";
+      Log.debug (fun m -> m "Successfully parsed JSON");
 
       (* Process the message *)
       process_message server json
     with Yojson.Json_error msg ->
-      Log.errorf "Error parsing JSON: %s" msg;
-      Log.errorf "Input was: %s" line;
+      Log.err (fun m -> m "Error parsing JSON: %s" msg);
+      Log.err (fun m -> m "Input was: %s" line);
       None)
 
 (* Send a response to the client *)
 let send_response stdout response =
   let response_json = JSONRPCMessage.yojson_of_t response in
   let response_str = Yojson.Safe.to_string response_json in
-  Log.debugf "Sending response: %s" response_str;
+  Log.debug (fun m -> m "Sending response: %s" response_str);
 
   (* Write the response followed by a newline *)
   Eio.Flow.copy_string response_str stdout;
@@ -460,7 +477,7 @@ let send_response stdout response =
 let callback mcp_server _conn (request : Http.Request.t) body =
   match request.meth with
   | `POST -> (
-      Log.debug "Received POST request";
+      Log.debug (fun m -> m "Received POST request");
       let request_body_str =
         Eio.Buf_read.(parse_exn take_all) body ~max_size:max_int
       in
@@ -468,7 +485,7 @@ let callback mcp_server _conn (request : Http.Request.t) body =
       | Some mcp_response ->
           let response_json = JSONRPCMessage.yojson_of_t mcp_response in
           let response_str = Yojson.Safe.to_string response_json in
-          Log.debugf "Sending MCP response: %s" response_str;
+          Log.debug (fun m -> m "Sending MCP response: %s" response_str);
           let headers =
             Http.Header.of_list [ ("Content-Type", "application/json") ]
           in
@@ -476,12 +493,13 @@ let callback mcp_server _conn (request : Http.Request.t) body =
             ~body:(Cohttp_eio.Body.of_string response_str)
             ()
       | None ->
-          Log.debug "No MCP response needed";
+          Log.debug (fun m -> m "No MCP response needed");
           Cohttp_eio.Server.respond ~status:`No_content
             ~body:(Cohttp_eio.Body.of_string "")
             ())
   | _ ->
-      Log.infof "Unsupported method: %s" (Http.Method.to_string request.meth);
+      Log.info (fun m ->
+          m "Unsupported method: %s" (Http.Method.to_string request.meth));
       Cohttp_eio.Server.respond ~status:`Method_not_allowed
         ~body:(Cohttp_eio.Body.of_string "Only POST is supported")
         ()
@@ -493,8 +511,9 @@ let run_server ?(port = 8080) ?(on_error = log_warning) env server =
   let net = Eio.Stdenv.net env in
   let addr = `Tcp (Eio.Net.Ipaddr.V4.loopback, port) in
 
-  Log.debugf "Starting MCP server: %s v%s" (name server) (version server);
-  Log.debugf "Protocol version: %s" (protocol_version server);
+  Log.info (fun m ->
+      m "Starting http MCP server: %s v%s\nProtocol version: %s" (name server)
+        (version server) (protocol_version server));
 
   Eio.Switch.run @@ fun sw ->
   let server_spec = Cohttp_eio.Server.make ~callback:(callback server) () in
@@ -502,7 +521,7 @@ let run_server ?(port = 8080) ?(on_error = log_warning) env server =
   let server_socket =
     Eio.Net.listen net ~sw ~backlog:128 ~reuse_addr:true addr
   in
-  Log.infof "MCP HTTP Server listening on http://localhost:%d" port;
+  Log.info (fun m -> m "MCP HTTP Server listening on http://localhost:%d" port);
 
   Cohttp_eio.Server.run server_socket server_spec ~on_error
 
@@ -511,8 +530,9 @@ let run_sdtio_server env server =
   let stdin = Eio.Stdenv.stdin env in
   let stdout = Eio.Stdenv.stdout env in
 
-  Log.debugf "Starting MCP server: %s v%s" (name server) (version server);
-  Log.debugf "Protocol version: %s" (protocol_version server);
+  Log.info (fun m ->
+      m "Starting stdio MCP server: %s v%s\nProtocol version: %s" (name server)
+        (version server) (protocol_version server));
 
   (* Enable exception backtraces *)
   Printexc.record_backtrace true;
@@ -522,21 +542,24 @@ let run_sdtio_server env server =
   (* Main processing loop *)
   try
     while true do
-      Log.debug "Waiting for message...";
+      Log.info (fun m -> m "Waiting for message...");
       let line = Eio.Buf_read.line buf in
 
       (* Process the input and send response if needed *)
       match process_input_line server line with
       | Some response -> send_response stdout response
-      | None -> Log.debug "No response needed for this message"
+      | None -> Log.info (fun m -> m "No response needed for this message")
     done
   with
   | End_of_file ->
-      Log.debug "End of file received on stdin";
+      Log.debug (fun m -> m "End of file received on stdin");
       ()
   | Eio.Exn.Io _ as exn ->
-      Log.errorf "I/O error while reading: %s" (Printexc.to_string exn);
+      (* Only a warning since on Windows, once the client closes the connection, we normally fail with `I/O error while reading: Eio.Io Net Connection_reset Unix_error (Broken pipe, "stub_cstruct_read", "")` *)
+      Log.warn (fun m ->
+          m "I/O error while reading: %s" (Printexc.to_string exn));
       ()
   | exn ->
-      Log.errorf "Exception while reading: %s" (Printexc.to_string exn);
+      Log.err (fun m ->
+          m "Exception while reading: %s" (Printexc.to_string exn));
       ()

@@ -6,38 +6,6 @@ open Jsonrpc
 val version : string
 (** SDK version *)
 
-(** Logging utilities *)
-module Log : sig
-  val src : Logs.src
-  (** Logs source for MCP SDK *)
-
-  type level = Debug | Info | Warning | Error
-
-  val string_of_level : level -> string
-
-  val logf : level -> ('a, unit, string, unit) format4 -> 'a
-  (** Format-string based logging functions *)
-
-  val debugf : ('a, unit, string, unit) format4 -> 'a
-  val infof : ('a, unit, string, unit) format4 -> 'a
-  val warningf : ('a, unit, string, unit) format4 -> 'a
-  val errorf : ('a, unit, string, unit) format4 -> 'a
-
-  val log : level -> string -> unit
-  (** Simple string logging functions (for backward compatibility) *)
-
-  val debug : string -> unit
-  val info : string -> unit
-  val warning : string -> unit
-  val error : string -> unit
-
-  val set_level : level -> unit
-  (** Set log level at runtime *)
-
-  val get_level : unit -> level option
-  (** Get current log level *)
-end
-
 (** Context for tools and resources *)
 module Context : sig
   type t

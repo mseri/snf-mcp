@@ -19,9 +19,9 @@ let rec get_with_redirects ~sw ~client ~headers ~max_redirects current_url =
       || String.starts_with ~prefix:"https://" current_url
     then current_url
     else (
-      Mcp_sdk.Log.infof
-        "No http transport specified in '%s', adding https:// to the url."
-        current_url;
+      Logs.info (fun m ->
+          m "No http transport specified in '%s', adding https:// to the url."
+            current_url);
       Printf.sprintf "https://%s" current_url)
   in
 
@@ -66,9 +66,9 @@ let fetch_markdown ~sw ~net ~clock ~rate_limiter ?(max_length = 8192)
       match exit_code with
       | WEXITED 0 ->
           let truncated_text = truncate_at max_length output in
-          Mcp_sdk.Log.infof
-            "Successfully fetched and parsed content (%d characters)"
-            (String.length truncated_text);
+          Logs.info (fun m ->
+              m "Successfully fetched and parsed content (%d characters)"
+                (String.length truncated_text));
           Ok truncated_text
       | WEXITED n | WSIGNALED n | WSTOPPED n ->
           Error
@@ -77,7 +77,7 @@ let fetch_markdown ~sw ~net ~clock ~rate_limiter ?(max_length = 8192)
                output)
     else (
       Rate_limiter.acquire rate_limiter clock;
-      Mcp_sdk.Log.infof "Fetching content from: %s" url;
+      Logs.info (fun m -> m "Fetching content from: %s" url);
       let client = Cohttp_eio.Client.make ~https:(Some (Https.make ())) net in
       let url = "https://r.jina.ai/" ^ url in
       let headers = Http.Header.add headers "X-Base" "final" in
@@ -89,8 +89,9 @@ let fetch_markdown ~sw ~net ~clock ~rate_limiter ?(max_length = 8192)
             Eio.Buf_read.(parse_exn take_all) body ~max_size:max_int
           in
           let truncated_text = truncate_at max_length content in
-          Mcp_sdk.Log.infof "Successfully fetched content (%d characters)"
-            (String.length truncated_text);
+          Logs.info (fun m ->
+              m "Successfully fetched content (%d characters)"
+                (String.length truncated_text));
           Ok truncated_text
       | resp, body ->
           let _ = Eio.Flow.read_all body in
@@ -106,7 +107,7 @@ let fetch_markdown ~sw ~net ~clock ~rate_limiter ?(max_length = 8192)
 let fetch_and_parse ~sw ~net ~clock ~rate_limiter ?(max_length = 8192) url =
   try
     Rate_limiter.acquire rate_limiter clock;
-    Mcp_sdk.Log.infof "Fetching content from: %s" url;
+    Logs.info (fun m -> m "Fetching content from: %s" url);
     let client = Cohttp_eio.Client.make ~https:(Some (Https.make ())) net in
 
     match get_with_redirects ~sw ~client ~headers ~max_redirects:5 url with
@@ -131,9 +132,9 @@ let fetch_and_parse ~sw ~net ~clock ~rate_limiter ?(max_length = 8192) url =
         in
 
         let truncated_text = truncate_at max_length text in
-        Mcp_sdk.Log.infof
-          "Successfully fetched and parsed content (%d characters)"
-          (String.length truncated_text);
+        Logs.info (fun m ->
+            m "Successfully fetched and parsed content (%d characters)"
+              (String.length truncated_text));
         Ok truncated_text
   with ex ->
     Error

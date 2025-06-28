@@ -10,6 +10,7 @@ let get_string_param json name =
 (* Command-line argument parsing *)
 type server_mode = Stdio | Port of int
 
+let log_level = ref Logs.Error
 let server_mode = ref Stdio
 let set_port port = server_mode := Port port
 let set_stdio () = server_mode := Stdio
@@ -21,32 +22,32 @@ let spec =
       Arg.Unit set_stdio,
       " Use stdio for communication instead of port (default)" );
     ( "--debug",
-      Arg.Unit (fun () -> Mcp_sdk.Log.set_level Debug),
+      Arg.Unit (fun () -> log_level := Logs.Debug),
       " Enable debug logging" );
     ( "--verbose",
-      Arg.Unit (fun () -> Mcp_sdk.Log.set_level Info),
+      Arg.Unit (fun () -> log_level := Logs.Info),
       " Enable verbose logging" );
     ( "--quiet",
-      Arg.Unit (fun () -> Mcp_sdk.Log.set_level Error),
+      Arg.Unit (fun () -> log_level := Logs.Error),
       " Suppress non-error logs (default)" );
   ]
 
 let usage_msg = "ddg_mcp [--serve PORT | --stdio]"
 
 let () =
-  let () = Mcp_sdk.Log.(set_level Error) in
   Arg.parse spec (fun _ -> ()) usage_msg;
 
+  Logs.set_level (Some !log_level);
   Logs.set_reporter (Logs_fmt.reporter ());
 
   let use_trafilatura =
     match Sys.command "command -v trafilatura > /dev/null 2>&1" with
     | 0 ->
-        Mcp_sdk.Log.info "Trafilatura is available";
+        Logs.info (fun m -> m "Trafilatura is available");
         true
     | _ ->
-        Mcp_sdk.Log.info
-          "Trafilatura is not available, falling back to jina reader";
+        Logs.info (fun m ->
+            m "Trafilatura is not available, falling back to jina reader");
         false
   in
 
@@ -205,14 +206,15 @@ let () =
   in
 
   let on_error exn =
-    Mcp_sdk.Log.errorf "Unhandled server error: %s\n%s" (Printexc.to_string exn)
-      (Printexc.get_backtrace ())
+    Logs.err (fun m ->
+        m "Unhandled server error: %s\n%s" (Printexc.to_string exn)
+          (Printexc.get_backtrace ()))
   in
 
   match !server_mode with
   | Stdio ->
-      Mcp_sdk.Log.infof "Starting MCP server in stdio mode";
+      Logs.info (fun m -> m "Starting MCP server in stdio mode");
       Mcp_server.run_sdtio_server env server
   | Port port ->
-      Mcp_sdk.Log.infof "Starting MCP server on port %d" port;
+      Logs.info (fun m -> m "Starting MCP server on port %d" port);
       Mcp_server.run_server env server ~port ~on_error
