@@ -32,13 +32,9 @@ end
 
 (* Helper for extracting string value from JSON arguments *)
 let get_string_param json name =
-  match json with
-  | `Assoc fields -> (
-      match List.assoc_opt name fields with
-      | Some (`String value) -> Ok value
-      | _ ->
-          Error (Printf.sprintf "Missing or invalid string parameter: %s" name))
-  | _ -> Error "Expected JSON object for arguments"
+  match Yojson.Safe.Util.(member name json |> to_string_option) with
+  | Some value -> Ok value
+  | _ -> Error (Printf.sprintf "Missing or invalid string parameter: %s" name)
 
 (* A simple record to hold search result data *)
 type search_result = {
