@@ -84,9 +84,11 @@ module Rate_limiter = struct
       Queue.push now t.requests)
 end
 
-module DuckDuckGo_searcher = struct
-  let base_url = "https://html.duckduckgo.com/html"
+module Web_searcher = struct
+  let ddg_uri = Uri.of_string "https://html.duckduckgo.com/html"
+  let wikipedia_uri = Uri.of_string "https://en.wikipedia.org/w/api.php"
 
+  (* Regular expressions for parsing Wikipedia snippets *)
   let headers =
     Http.Header.of_list
       [
@@ -99,8 +101,8 @@ module DuckDuckGo_searcher = struct
 
   let format_results_for_llm (results : search_result list) : string =
     if List.length results = 0 then
-      "No results were found for your search query. This could be due to \
-       DuckDuckGo's bot detection or the query returned no matches. Please try \
+      "No results were found for your search query. This could be due to bot \
+       detection mechanics or the query returned no matches. Please try \
        rephrasing your search or try again in a few minutes."
     else
       let result_strings =
@@ -119,8 +121,7 @@ module DuckDuckGo_searcher = struct
       Log.infof "Searching DuckDuckGo for: %s" query;
 
       let uri =
-        Uri.of_string base_url |> fun uri ->
-        Uri.add_query_params uri
+        Uri.add_query_params ddg_uri
           [ ("q", [ query ]); ("b", [ "" ]); ("kl", [ "" ]) ]
       in
       let client = Client.make ~https:(Some (Https.make ())) net in
@@ -180,6 +181,72 @@ module DuckDuckGo_searcher = struct
         Log.infof "Successfully found %d results" (List.length final_results);
         Ok final_results
     with ex -> Error (Printexc.to_string ex)
+
+  let search_wikipedia ~sw ~net ~clock ~rate_limiter ?(max_results = 10)
+      search_term =
+    let parse_wiki (json : Yojson.Safe.t) =
+      let open Yojson.Safe.Util in
+      let fields = json |> member "query" |> member "search" |> to_list in
+      let results =
+        List.mapi
+          (fun i item ->
+            let title = item |> member "title" |> to_string in
+            let title_for_url =
+              String.trim title
+              |> Re.replace_string ~all:true whitespace_re ~by:"_"
+              |> Uri.pct_encode
+            in
+            let snippet =
+              item |> member "snippet" |> to_string
+              |> Re.replace_string ~all:true wiki_opensnippet_re ~by:""
+              |> Re.replace_string ~all:true wiki_closesnippet_re ~by:""
+            in
+            let position = i + 1 in
+            let link =
+              Printf.sprintf "https://en.wikipedia.org/wiki/%s" title_for_url
+            in
+            { title; link; snippet; position })
+          fields
+      in
+      Ok results
+    in
+
+    try
+      Rate_limiter.acquire rate_limiter clock;
+      Log.infof "Searching Wikipedia for: %s" search_term;
+
+      let params =
+        [
+          ("action", "query");
+          ("format", "json");
+          ("list", "search");
+          ("srsearch", search_term);
+          ("srlimit", string_of_int max_results);
+          ("srprop", "snippet|titlesnippet");
+        ]
+      in
+
+      let url = Uri.add_query_params' wikipedia_uri params in
+
+      let client = Client.make ~https:(Some (Https.make ())) net in
+
+      match Client.get ~sw ~headers client url with
+      | resp, body when resp.status = `OK ->
+          let json_content =
+            Eio.Buf_read.(parse_exn take_all) body ~max_size:max_int
+          in
+          let json = Yojson.Safe.from_string json_content in
+          parse_wiki json
+      | resp, body ->
+          let _ = Eio.Flow.read_all body in
+          Error
+            (Printf.sprintf "Wikipedia API request failed (%s)"
+               (Http.Status.to_string resp.status))
+    with ex ->
+      Error
+        (Printf.sprintf
+           "An unexpected error occurred while searching Wikipedia (%s)"
+           (Printexc.to_string ex))
 end
 
 (* Module for fetching and parsing web content *)
@@ -311,105 +378,12 @@ module Web_content_fetcher = struct
         (Printf.sprintf
            "An unexpected error occurred while fetching the webpage (%s)"
            (Printexc.to_string ex))
-
-  let search_wikipedia ~sw ~net ~clock ~rate_limiter ?(max_results = 10)
-      search_term =
-    let parse_wiki (json : Yojson.Safe.t) =
-      let open Yojson.Safe.Util in
-      let fields = json |> member "query" |> member "search" |> to_list in
-      let results =
-        List.mapi
-          (fun i item ->
-            let title = item |> member "title" |> to_string in
-            let title_for_url =
-              String.trim title
-              |> Re.replace_string ~all:true whitespace_re ~by:"_"
-              |> Uri.pct_encode
-            in
-            let snippet =
-              item |> member "snippet" |> to_string
-              |> Re.replace_string ~all:true wiki_opensnippet_re ~by:""
-              |> Re.replace_string ~all:true wiki_closesnippet_re ~by:""
-            in
-            let position = i + 1 in
-            let link =
-              Printf.sprintf "https://en.wikipedia.org/wiki/%s" title_for_url
-            in
-            { title; link; snippet; position })
-          fields
-      in
-      Ok results
-    in
-
-    try
-      Rate_limiter.acquire rate_limiter clock;
-      Log.infof "Searching Wikipedia for: %s" search_term;
-
-      let base_url = "https://en.wikipedia.org/w/api.php" in
-      let params =
-        [
-          ("action", "query");
-          ("format", "json");
-          ("list", "search");
-          ("srsearch", search_term);
-          ("srlimit", string_of_int max_results);
-          ("srprop", "snippet|titlesnippet");
-        ]
-      in
-
-      let query_string =
-        params
-        |> List.map (fun (k, v) -> k ^ "=" ^ Uri.pct_encode v)
-        |> String.concat "&"
-      in
-      let url = base_url ^ "?" ^ query_string in
-
-      let client = Client.make ~https:(Some (Https.make ())) net in
-
-      match Client.get ~sw ~headers client (Uri.of_string url) with
-      | resp, body when resp.status = `OK ->
-          let json_content =
-            Eio.Buf_read.(parse_exn take_all) body ~max_size:max_int
-          in
-          let json = Yojson.Safe.from_string json_content in
-          parse_wiki json
-      | resp, body ->
-          let _ = Eio.Flow.read_all body in
-          Error
-            (Printf.sprintf "Wikipedia API request failed (%s)"
-               (Http.Status.to_string resp.status))
-    with ex ->
-      Error
-        (Printf.sprintf
-           "An unexpected error occurred while searching Wikipedia (%s)"
-           (Printexc.to_string ex))
-
-  let format_results_for_llm (results : search_result list) :
-      (string, string) result =
-    if List.length results = 0 then
-      Error "No results were found for your search query on Wikipedia."
-    else
-      let output_lines =
-        Printf.sprintf "Found %d Wikipedia results:\n" (List.length results)
-        :: List.fold_left
-             (fun acc result ->
-               let item_lines =
-                 [
-                   Printf.sprintf "%d. %s\n" result.position result.title;
-                   Printf.sprintf "URL: %s\n" result.link;
-                   Printf.sprintf "Summary: %s\n\n" result.snippet;
-                 ]
-               in
-               acc @ item_lines)
-             [] results
-      in
-      Ok (String.concat "\n" output_lines)
 end
 
 (* Command-line argument parsing *)
 type server_mode = Stdio | Port of int
 
-let server_mode = ref (Port 8080)
+let server_mode = ref Stdio
 let set_port port = server_mode := Port port
 let set_stdio () = server_mode := Stdio
 
@@ -462,27 +436,63 @@ let () =
         ]
       ~schema_required:[ "query" ]
       (fun args ->
-        let response_text =
-          Switch.run @@ fun sw ->
-          match
-            (get_string_param args "query", get_string_param args "max_results")
-          with
-          | Error msg, _ -> msg
-          | Ok query, max_results -> (
-              let max_results =
-                match max_results with
-                | Error _ -> 10
-                | Ok len -> Option.value (int_of_string_opt len) ~default:10
-              in
-              match
-                DuckDuckGo_searcher.search ~sw ~net ~clock
-                  ~rate_limiter:search_rate_limiter query max_results
-              with
-              | Ok results -> DuckDuckGo_searcher.format_results_for_llm results
-              | Error msg ->
-                  Printf.sprintf "An error occurred while searching: %s" msg)
-        in
-        `String response_text)
+        Switch.run @@ fun sw ->
+        match
+          (get_string_param args "query", get_string_param args "max_results")
+        with
+        | Error msg, _ -> Tool.create_error_result msg
+        | Ok query, max_results -> (
+            let max_results =
+              match max_results with
+              | Error _ -> 10
+              | Ok len -> Option.value (int_of_string_opt len) ~default:10
+            in
+            match
+              Web_searcher.search ~sw ~net ~clock
+                ~rate_limiter:search_rate_limiter query max_results
+            with
+            | Ok results ->
+                let results = Web_searcher.format_results_for_llm results in
+                Tool.create_tool_result
+                  [ Mcp.make_text_content results ]
+                  ~is_error:false
+            | Error msg -> Tool.create_error_result msg))
+  in
+
+  let _ =
+    add_tool server ~name:"search_wikipedia"
+      ~description:"Search Wikipedia and return formatted results."
+      ~schema_properties:
+        [
+          ("search_term", "string", "The term to search for on Wikipedia");
+          ( "max_results",
+            "integer",
+            "Maximum number of results to return (default: 10)" );
+        ]
+      ~schema_required:[ "search_term" ]
+      (fun args ->
+        Switch.run @@ fun sw ->
+        match
+          ( get_string_param args "search_term",
+            get_string_param args "max_results" )
+        with
+        | Error msg, _ -> Tool.create_error_result msg
+        | Ok search_term, max_results -> (
+            let max_results =
+              match max_results with
+              | Error _ -> 10
+              | Ok len -> Option.value (int_of_string_opt len) ~default:10
+            in
+            match
+              Web_searcher.search_wikipedia ~sw ~net ~clock
+                ~rate_limiter:search_rate_limiter ~max_results search_term
+            with
+            | Ok results ->
+                let results = Web_searcher.format_results_for_llm results in
+                Tool.create_tool_result
+                  [ Mcp.make_text_content results ]
+                  ~is_error:false
+            | Error msg -> Tool.create_error_result msg))
   in
 
   let _ =
@@ -498,26 +508,26 @@ let () =
         ]
       ~schema_required:[ "url" ]
       (fun args ->
-        let response_text =
-          Switch.run @@ fun sw ->
-          match
-            (get_string_param args "url", get_string_param args "max_length")
-          with
-          | Error msg, _ -> msg
-          | Ok url, max_length -> (
-              let max_length =
-                match max_length with
-                | Error _ -> None
-                | Ok len -> int_of_string_opt len
-              in
-              match
-                Web_content_fetcher.fetch_and_parse ~sw ~net ~clock
-                  ~rate_limiter:fetch_rate_limiter ?max_length url
-              with
-              | Ok content -> content
-              | Error msg -> msg)
-        in
-        `String response_text)
+        Switch.run @@ fun sw ->
+        match
+          (get_string_param args "url", get_string_param args "max_length")
+        with
+        | Error msg, _ -> Tool.create_error_result msg
+        | Ok url, max_length -> (
+            let max_length =
+              match max_length with
+              | Error _ -> None
+              | Ok len -> int_of_string_opt len
+            in
+            match
+              Web_content_fetcher.fetch_and_parse ~sw ~net ~clock
+                ~rate_limiter:fetch_rate_limiter ?max_length url
+            with
+            | Ok content ->
+                Tool.create_tool_result
+                  [ Mcp.make_text_content content ]
+                  ~is_error:false
+            | Error msg -> Tool.create_error_result msg))
   in
 
   let _ =
@@ -533,66 +543,28 @@ let () =
         ]
       ~schema_required:[ "url" ]
       (fun args ->
-        let response_text =
-          Switch.run @@ fun sw ->
-          match
-            (get_string_param args "url", get_string_param args "max_length")
-          with
-          | Error msg, _ -> msg
-          | Ok url, max_length -> (
-              let max_length =
-                match max_length with
-                | Error _ -> None
-                | Ok len -> int_of_string_opt len
-              in
-              match
-                Web_content_fetcher.fetch_markdown ~sw ~net ~clock
-                  ~rate_limiter:fetch_rate_limiter ?max_length ~use_trafilatura
-                  url
-              with
-              | Ok content -> content
-              | Error msg -> msg)
-        in
-        `String response_text)
-  in
-
-  let _ =
-    add_tool server ~name:"search_wikipedia"
-      ~description:"Search Wikipedia and return formatted results."
-      ~schema_properties:
-        [
-          ("search_term", "string", "The term to search for on Wikipedia");
-          ( "max_results",
-            "integer",
-            "Maximum number of results to return (default: 10)" );
-        ]
-      ~schema_required:[ "search_term" ]
-      (fun args ->
-        let response_text =
-          Switch.run @@ fun sw ->
-          match
-            ( get_string_param args "search_term",
-              get_string_param args "max_results" )
-          with
-          | Error msg, _ -> msg
-          | Ok search_term, max_results -> (
-              let max_results =
-                match max_results with
-                | Error _ -> 10
-                | Ok len -> Option.value (int_of_string_opt len) ~default:10
-              in
-              match
-                Web_content_fetcher.(
-                  search_wikipedia ~sw ~net ~clock
-                    ~rate_limiter:search_rate_limiter ~max_results search_term
-                  |> fun r -> Result.bind r format_results_for_llm)
-              with
-              | Ok results -> results
-              | Error msg ->
-                  Printf.sprintf
-                    "An error occurred while searching Wikipedia: %s" msg)
-        in
-        `String response_text)
+        Switch.run @@ fun sw ->
+        match
+          (get_string_param args "url", get_string_param args "max_length")
+        with
+        | Error msg, _ -> Tool.create_error_result msg
+        | Ok url, max_length -> (
+            let max_length =
+              match max_length with
+              | Error _ -> None
+              | Ok len -> int_of_string_opt len
+            in
+            (* Instead of using max_length to cut the content, we should use Cursor.t to allow for batched fetching of content in chunks *)
+            match
+              Web_content_fetcher.fetch_markdown ~sw ~net ~clock
+                ~rate_limiter:fetch_rate_limiter ?max_length ~use_trafilatura
+                url
+            with
+            | Ok content ->
+                Tool.create_tool_result
+                  [ Mcp.make_text_content content ]
+                  ~is_error:false
+            | Error msg -> Tool.create_error_result msg))
   in
 
   let on_error exn =
