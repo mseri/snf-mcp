@@ -32,7 +32,7 @@ Fetch and parse content from a webpage URL.
 
 **Parameters:**
 - `url` (string, required): The webpage URL to fetch content from
-- `max_length` (integer, optional): Maximum length (in bytes) of content to return (default: 8192)
+- `max_length` (integer, optional): Maximum length (in bytes) of content to return (default: 8192). Set `-1` to disable length limit.
 
 **Example:**
 ```json
@@ -47,7 +47,7 @@ Fetch and parse content from a webpage URL as Markdown.
 
 **Parameters:**
 - `url` (string, required): The webpage URL to fetch content from
-- `max_length` (integer, optional): Maximum length (in bytes) of content to return (default: 8192)
+- `max_length` (integer, optional): Maximum length (in bytes) of content to return (default: 8192). Set `-1` to disable length limit.
 
 **Example:**
 ```json
@@ -66,31 +66,32 @@ The `ddg_mcp` binary supports two modes of operation:
 1. **HTTP Server Mode** (default): Listens on a network port
 2. **Standard I/O Mode**: Communicates through stdin/stdout
 
-Start the MCP server in HTTP mode (default port 8080):
+Start the MCP server in HTTP mode on port 3000:
 ```bash
-dune exec ./bin/ddg_mcp
-```
-
-Or specify a custom port:
-```bash
-dune exec ./bin/ddg_mcp -- --port 3000
+dune exec ./bin/ddg_mcp.exe -- --serve 3000
 ```
 
 Use Standard I/O mode (useful for integrating with LLM clients):
 ```bash
-dune exec ./bin/ddg_mcp -- --stdio
+dune exec ./bin/ddg_mcp.exe -- --stdio
 ```
 
 When installed via OPAM, you can run it directly:
 ```bash
-ddg_mcp [--port PORT] [--stdio]
+ddg_mcp [--serve PORT | --stdio]
 ```
 
 ### Testing the Server
 
 #### HTTP Mode
 
-When running in HTTP mode, you can test if the server is working by sending MCP protocol messages using curl:
+When running in HTTP mode, you can test if the server is working by sending MCP protocol messages using curl.
+
+First start the server with:
+```bash
+dune exec ./bin/ddg_mcp.exe --serve 8080
+```
+Then, on a different terminal, you can use `curl` to interact with the server. Here are some example requests:
 
 **List available tools:**
 ```bash
@@ -152,11 +153,11 @@ curl -X POST http://localhost:8080 -H "Content-Type: application/json" -d '{
 When using stdio mode, you can pipe JSON-RPC requests to the binary:
 
 ```bash
-echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | dune exec ./bin/ddg_mcp -- --stdio | jq
+echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | dune exec ./bin/ddg_mcp.exe -- --stdio | jq
 ```
 
 ```bash
-echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"search","arguments":{"query":"OCaml programming language"}},"id":2}' | dune exec ./bin/ddg_mcp -- --stdio | jq
+echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"search","arguments":{"query":"OCaml programming language"}},"id":2}' | dune exec ./bin/ddg_mcp.exe -- --stdio | jq
 ```
 
 This mode is particularly useful when integrating with LLM clients that communicate over stdin/stdout.
@@ -251,4 +252,3 @@ pip install trafilatura # Method 3: Using `pip`
 
 # TODO
 - Update reade (interface changed, added wikipedia tool)
-- Debug why response is doubly-nested

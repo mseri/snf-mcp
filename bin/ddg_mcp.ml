@@ -259,7 +259,7 @@ module Web_content_fetcher = struct
       ]
 
   let truncate_at max_length content =
-    if String.length content > max_length then
+    if max_length > 0 && String.length content > max_length then
       String.sub content 0 max_length ^ "... [content truncated]"
     else content
 
@@ -504,7 +504,7 @@ let () =
           ( "max_length",
             "integer",
             "Maximum length (in bytes) of content to return (default: 8192 \
-             characters)" );
+             characters). Use -1 to disable the limit." );
         ]
       ~schema_required:[ "url" ]
       (fun args ->
@@ -539,7 +539,7 @@ let () =
           ( "max_length",
             "integer",
             "Maximum length (in bytes) of content to return (default: 8192 \
-             characters)" );
+             characters). Use -1 to disable the limit." );
         ]
       ~schema_required:[ "url" ]
       (fun args ->
