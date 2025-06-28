@@ -46,6 +46,8 @@ let search ~sw ~net ~clock ~rate_limiter query max_results =
       Uri.add_query_params ddg_uri
         [ ("q", [ query ]); ("b", [ "" ]); ("kl", [ "" ]) ]
     in
+    (* TODO: sometimes we get a 202 response, which is not handled here.
+    we should have a small delay and poll the monitorUrl: see https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/202 *)
     let client = Cohttp_eio.Client.make ~https:(Some (Https.make ())) net in
     Logs.info (fun m ->
         m "BODY: %s\n"
