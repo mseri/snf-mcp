@@ -2,7 +2,7 @@ open Eio.Std
 open Mcp_sdk
 open Cohttp_eio
 
-let whitespace_re = Re.compile (Re.str "\\s+")
+let whitespace_re = Re.compile Re.(rep1 blank)
 let wiki_opensnippet_re = Re.compile (Re.str "<span class=\"searchmatch\">")
 let wiki_closesnippet_re = Re.compile (Re.str "</span>")
 
@@ -182,8 +182,7 @@ module Web_searcher = struct
         Ok final_results
     with ex -> Error (Printexc.to_string ex)
 
-  let search_wikipedia ~sw ~net ~clock ~rate_limiter ?(max_results = 10)
-      search_term =
+  let search_wikipedia ~sw ~net ~clock ~rate_limiter ?(max_results = 10) query =
     let parse_wiki (json : Yojson.Safe.t) =
       let open Yojson.Safe.Util in
       let fields = json |> member "query" |> member "search" |> to_list in
@@ -213,14 +212,14 @@ module Web_searcher = struct
 
     try
       Rate_limiter.acquire rate_limiter clock;
-      Log.infof "Searching Wikipedia for: %s" search_term;
+      Log.infof "Searching Wikipedia for: %s" query;
 
       let params =
         [
           ("action", "query");
           ("format", "json");
           ("list", "search");
-          ("srsearch", search_term);
+          ("srsearch", query);
           ("srlimit", string_of_int max_results);
           ("srprop", "snippet|titlesnippet");
         ]
@@ -419,8 +418,8 @@ let () =
   let clock = Eio.Stdenv.clock env in
 
   let server =
-    create_server ~name:"ocaml-ddg-search" ~version:"0.1.0"
-      ~protocol_version:"2024-11-05" ()
+    create_server ~name:"ocaml-search-and-fetch" ~version:"0.2.0"
+      ~protocol_version:"2025-06-28" ()
     |> fun server -> configure_server server ~with_tools:true ()
   in
 
@@ -464,20 +463,19 @@ let () =
       ~description:"Search Wikipedia and return formatted results."
       ~schema_properties:
         [
-          ("search_term", "string", "The term to search for on Wikipedia");
+          ("query", "string", "The search query string");
           ( "max_results",
             "integer",
             "Maximum number of results to return (default: 10)" );
         ]
-      ~schema_required:[ "search_term" ]
+      ~schema_required:[ "query" ]
       (fun args ->
         Switch.run @@ fun sw ->
         match
-          ( get_string_param args "search_term",
-            get_string_param args "max_results" )
+          (get_string_param args "query", get_string_param args "max_results")
         with
         | Error msg, _ -> Tool.create_error_result msg
-        | Ok search_term, max_results -> (
+        | Ok query, max_results -> (
             let max_results =
               match max_results with
               | Error _ -> 10
@@ -485,7 +483,7 @@ let () =
             in
             match
               Web_searcher.search_wikipedia ~sw ~net ~clock
-                ~rate_limiter:search_rate_limiter ~max_results search_term
+                ~rate_limiter:search_rate_limiter ~max_results query
             with
             | Ok results ->
                 let results = Web_searcher.format_results_for_llm results in

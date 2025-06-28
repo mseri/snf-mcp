@@ -32,13 +32,13 @@ Search DuckDuckGo and return formatted results.
 Search Wikipedia and return formatted results.
 
 **Parameters:**
-- `search_term` (string, required): The term to search for on Wikipedia
+- `query` (string, required): The search query string
 - `max_results` (integer, optional): Maximum number of results to return (default: 10)
 
 **Example:**
 ```json
 {
-  "search_term": "OCaml programming language",
+  "query": "OCaml programming language",
   "max_results": 5
 }
 ```
@@ -158,7 +158,7 @@ curl -X POST http://localhost:8080 -H "Content-Type: application/json" -d '{
   "params": {
     "name": "search_wikipedia",
     "arguments": {
-      "search_term": "OCaml programming language",
+      "query": "OCaml programming language",
       "max_results": 3
     }
   }
@@ -193,7 +193,7 @@ echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"search","argument
 ```
 
 ```bash
-echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"search_wikipedia","arguments":{"search_term":"OCaml programming language"}},"id":3}' | dune exec ./bin/ddg_mcp.exe -- --stdio | jq
+echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"search_wikipedia","arguments":{"query":"OCaml programming language"}},"id":3}' | dune exec ./bin/ddg_mcp.exe -- --stdio | jq
 ```
 
 ```bash
