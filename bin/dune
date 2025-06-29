@@ -1,5 +1,6 @@
 (executable
- (public_name ddg_mcp)
+ (name snf_mcp)
+ (public_name snf-mcp)
  (libraries
   ca-certs
   mcp.sdk

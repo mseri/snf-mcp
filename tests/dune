@@ -1,2 +1,2 @@
 (cram
- (deps %{bin:ddg_mcp}))
+ (deps %{bin:snf-mcp}))

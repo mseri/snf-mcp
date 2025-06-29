@@ -1,12 +1,12 @@
 # Web fetch and search MCP Server
 
-A Model Context Protocol (MCP) server that provides DuckDuckGo search, Wikipedia search, and web content fetching capabilities, written in OCaml using the eio asynchronous runtime.
+A Model Context Protocol (MCP) server that provides web search, Wikipedia search, and web content fetching capabilities, written in OCaml using the eio asynchronous runtime.
 
 ## Features
 
 - **DuckDuckGo Search**: Search the web using DuckDuckGo's search engine
 - **Wikipedia Search**: Search Wikipedia for articles and content
-- **Web Content Fetching**: Fetch and parse content from web pages
+- **Web Content Fetching**: Fetch and parse content from web pages, with support for both cleaned-up HTML and Markdown formats
 - **Rate Limiting**: Built-in rate limiting to respect service limits
 - **MCP Protocol**: Fully compatible with the Model Context Protocol specification (vendoring <https://tangled.sh/@anil.recoil.org/ocaml-mcp/>)
 - **Asynchronous**: Built on Eio for efficient concurrent operations
@@ -77,24 +77,24 @@ Fetch and parse content from a webpage URL as Markdown.
 
 ### Running the Server
 
-The `ddg_mcp` binary supports two modes of operation:
+The `snf_mcp` binary supports two modes of operation:
 
 1. **HTTP Server Mode** (default): Listens on a network port
 2. **Standard I/O Mode**: Communicates through stdin/stdout
 
 Start the MCP server in HTTP mode on port 3000:
 ```bash
-dune exec ./bin/ddg_mcp.exe -- --serve 3000
+dune exec ./bin/snf_mcp.exe -- --serve 3000
 ```
 
 Use Standard I/O mode (useful for integrating with LLM clients):
 ```bash
-dune exec ./bin/ddg_mcp.exe -- --stdio
+dune exec ./bin/snf_mcp.exe -- --stdio
 ```
 
 When installed via OPAM, you can run it directly:
 ```bash
-ddg_mcp [--serve PORT | --stdio]
+snf_mcp [--serve PORT | --stdio]
   --serve  Run http server, listening on PORT
   --stdio  Use stdio for communication instead of port (default)
   --debug  Enable debug logging
@@ -112,7 +112,7 @@ When running in HTTP mode, you can test if the server is working by sending MCP 
 
 First start the server with:
 ```bash
-dune exec ./bin/ddg_mcp.exe --serve 8080
+dune exec ./bin/snf_mcp.exe --serve 8080
 ```
 Then, on a different terminal, you can use `curl` to interact with the server. Here are some example requests:
 
@@ -192,23 +192,23 @@ curl -X POST http://localhost:8080 -H "Content-Type: application/json" -d '{
 When using stdio mode, you can pipe JSON-RPC requests to the binary:
 
 ```bash
-echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | dune exec ./bin/ddg_mcp.exe -- --stdio | jq
+echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | dune exec ./bin/snf_mcp.exe -- --stdio | jq
 ```
 
 ```bash
-echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"search","arguments":{"query":"OCaml programming language"}},"id":2}' | dune exec ./bin/ddg_mcp.exe -- --stdio | jq
+echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"search","arguments":{"query":"OCaml programming language"}},"id":2}' | dune exec ./bin/snf_mcp.exe -- --stdio | jq
 ```
 
 ```bash
-echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"search_wikipedia","arguments":{"query":"OCaml programming language"}},"id":3}' | dune exec ./bin/ddg_mcp.exe -- --stdio | jq
+echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"search_wikipedia","arguments":{"query":"OCaml programming language"}},"id":3}' | dune exec ./bin/snf_mcp.exe -- --stdio | jq
 ```
 
 ```bash
-echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"fetch_content","arguments":{"url":"https://ocaml.org"}},"id":4}' | dune exec ./bin/ddg_mcp -- --stdio | jq
+echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"fetch_content","arguments":{"url":"https://ocaml.org"}},"id":4}' | dune exec ./bin/snf_mcp -- --stdio | jq
 ```
 
 ```bash
-echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"fetch_markdown","arguments":{"url":"https://ocaml.org"}},"id":5}' | dune exec ./bin/ddg_mcp.exe -- --stdio | jq
+echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"fetch_markdown","arguments":{"url":"https://ocaml.org"}},"id":5}' | dune exec ./bin/snf_mcp.exe -- --stdio | jq
 ```
 
 This mode is particularly useful when integrating with LLM clients that communicate over stdin/stdout.
@@ -220,13 +220,13 @@ This mode is particularly useful when integrating with LLM clients that communic
 1. Clone the repository
 2. Install dependencies and build:
 ```bash
-$ cd ddg_mcp
+$ cd snf_mcp
 $ opam install . --deps-only
 $ dune build
 $ dune install
 ```
 
-This will make the `ddg_mcp` binary available in your PATH.
+This will make the `snf_mcp` binary available in your PATH.
 
 ### Integration with MCP Clients
 
@@ -244,8 +244,8 @@ then edit (or create) `~/.llm-tools-mcp/mcp.json` with
 ```
 {
   "mcpServers": {
-    "ddg_mcp": {
-      "command": "/path/to/ddg_mcp",
+    "snf_mcp": {
+      "command": "/path/to/snf_mcp",
       "args": [
         "--stdio"
       ]
@@ -261,7 +261,7 @@ See also the [official documentation](https://lmstudio.ai/docs/app/plugins/mcp).
 
 #### Jan
 
-Use the _full path_ to ddg_mcp as command, and `--stdio` as the only argument.
+Use the _full path_ to snf_mcp as command, and `--stdio` as the only argument.
 See also the [official documentation](https://jan.ai/docs/mcp).
 
 Note, _I was only able to configure stdio-based mcp servers_ with Jan.
