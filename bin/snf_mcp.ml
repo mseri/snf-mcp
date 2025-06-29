@@ -7,6 +7,13 @@ let get_string_param json name =
   | Some value -> Ok value
   | _ -> Error (Printf.sprintf "Missing or invalid string parameter: %s" name)
 
+let get_int_param json name default =
+  match Yojson.Safe.Util.(member name json) with
+  | `String s -> Option.value (int_of_string_opt s) ~default
+  | `Int i -> i
+  | _ -> default
+
+(* MCP SDK imports *)
 (* Command-line argument parsing *)
 type server_mode = Stdio | Port of int
 
@@ -80,15 +87,10 @@ let () =
       (fun args ->
         Switch.run @@ fun sw ->
         match
-          (get_string_param args "query", get_string_param args "max_results")
+          (get_string_param args "query", get_int_param args "max_results" 10)
         with
         | Error msg, _ -> Mcp_sdk.Tool.create_error_result msg
         | Ok query, max_results -> (
-            let max_results =
-              match max_results with
-              | Error _ -> 10
-              | Ok len -> Option.value (int_of_string_opt len) ~default:10
-            in
             match
               Search.search ~sw ~net ~clock ~rate_limiter:search_rate_limiter
                 query max_results
@@ -115,15 +117,10 @@ let () =
       (fun args ->
         Switch.run @@ fun sw ->
         match
-          (get_string_param args "query", get_string_param args "max_results")
+          (get_string_param args "query", get_int_param args "max_results" 10)
         with
         | Error msg, _ -> Mcp_sdk.Tool.create_error_result msg
         | Ok query, max_results -> (
-            let max_results =
-              match max_results with
-              | Error _ -> 10
-              | Ok len -> Option.value (int_of_string_opt len) ~default:10
-            in
             match
               Search.search_wikipedia ~sw ~net ~clock
                 ~rate_limiter:search_rate_limiter ~max_results query
@@ -151,18 +148,13 @@ let () =
       (fun args ->
         Switch.run @@ fun sw ->
         match
-          (get_string_param args "url", get_string_param args "max_length")
+          (get_string_param args "url", get_int_param args "max_length" 8192)
         with
         | Error msg, _ -> Mcp_sdk.Tool.create_error_result msg
         | Ok url, max_length -> (
-            let max_length =
-              match max_length with
-              | Error _ -> None
-              | Ok len -> int_of_string_opt len
-            in
             match
               Fetch.fetch_and_parse ~sw ~net ~clock
-                ~rate_limiter:fetch_rate_limiter ?max_length url
+                ~rate_limiter:fetch_rate_limiter ~max_length url
             with
             | Ok content ->
                 Mcp_sdk.Tool.create_tool_result
@@ -186,19 +178,14 @@ let () =
       (fun args ->
         Switch.run @@ fun sw ->
         match
-          (get_string_param args "url", get_string_param args "max_length")
+          (get_string_param args "url", get_int_param args "max_length" 8192)
         with
         | Error msg, _ -> Mcp_sdk.Tool.create_error_result msg
         | Ok url, max_length -> (
-            let max_length =
-              match max_length with
-              | Error _ -> None
-              | Ok len -> int_of_string_opt len
-            in
             (* Instead of using max_length to cut the content, we should use Cursor.t to allow for batched fetching of content in chunks *)
             match
               Fetch.fetch_markdown ~sw ~net ~clock
-                ~rate_limiter:fetch_rate_limiter ?max_length ~use_trafilatura
+                ~rate_limiter:fetch_rate_limiter ~max_length ~use_trafilatura
                 url
             with
             | Ok content ->
