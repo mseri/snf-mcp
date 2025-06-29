@@ -62,8 +62,7 @@ let () =
   let clock = Eio.Stdenv.clock env in
 
   let server =
-    Mcp_sdk.create_server ~name:"ocaml-search-and-fetch" ~version:"0.2.0"
-      ~protocol_version:"2025-06-28" ()
+    Mcp_sdk.create_server ~name:"ocaml-search-and-fetch" ~version:"0.2.0" ()
     |> fun server -> Mcp_sdk.configure_server server ~with_tools:true ()
   in
 
