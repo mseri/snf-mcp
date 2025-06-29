@@ -512,7 +512,7 @@ let run_server ?(port = 8080) ?(on_error = log_warning) env server =
   let addr = `Tcp (Eio.Net.Ipaddr.V4.loopback, port) in
 
   Log.info (fun m ->
-      m "Starting http MCP server: %s v%s\nProtocol version: %s" (name server)
+      m "Starting http MCP server: %s v%s\n(protocol: v%s)" (name server)
         (version server) (protocol_version server));
 
   Eio.Switch.run @@ fun sw ->
@@ -531,7 +531,7 @@ let run_sdtio_server env server =
   let stdout = Eio.Stdenv.stdout env in
 
   Log.info (fun m ->
-      m "Starting stdio MCP server: %s v%s\nProtocol version: %s" (name server)
+      m "Starting stdio MCP server: %s v%s (protocol v%s)" (name server)
         (version server) (protocol_version server));
 
   (* Enable exception backtraces *)

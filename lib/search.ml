@@ -46,65 +46,83 @@ let search ~sw ~net ~clock ~rate_limiter query max_results =
       Uri.add_query_params ddg_uri
         [ ("q", [ query ]); ("b", [ "" ]); ("kl", [ "" ]) ]
     in
-    (* TODO: sometimes we get a 202 response, which is not handled here.
-    we should have a small delay and poll the monitorUrl: see https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/202 *)
     let client = Cohttp_eio.Client.make ~https:(Some (Https.make ())) net in
     Logs.info (fun m ->
         m "BODY: %s\n"
           (Uri.encoded_of_query
              [ ("q", [ query ]); ("b", [ "" ]); ("kl", [ "" ]) ]));
 
-    let resp, body = Cohttp_eio.Client.get ~sw ~headers client uri in
+    (* Helper function to handle 202 responses with retry logic *)
+    let rec fetch_with_retry ?(max_retries = 3) ?(delay = 1.0) uri =
+      let resp, body = Cohttp_eio.Client.get ~sw ~headers client uri in
+      match resp.status with
+      | `OK ->
+          let html = Eio.Buf_read.(parse_exn take_all) body ~max_size:max_int in
+          Ok html
+      | `Accepted when max_retries > 0 ->
+          (* Handle 202 response - read and discard body, then retry after delay *)
+          let _ = Eio.Buf_read.(parse_exn take_all) body ~max_size:max_int in
+          Logs.info (fun m ->
+              m
+                "Received 202 response, retrying in %.1f seconds (%d retries \
+                 left)"
+                delay max_retries);
+          Eio.Time.sleep clock delay;
+          fetch_with_retry ~max_retries:(max_retries - 1) ~delay:(delay *. 1.5)
+            uri
+      | status ->
+          let _ = Eio.Buf_read.(parse_exn take_all) body ~max_size:max_int in
+          Error (Printf.sprintf "HTTP Error: %s" (Http.Status.to_string status))
+    in
 
-    if Http.Status.compare resp.status `OK <> 0 then
-      Error
-        (Printf.sprintf "HTTP Error: %s" (Http.Status.to_string resp.status))
-    else
-      let html = Eio.Buf_read.(parse_exn take_all) body ~max_size:max_int in
+    match fetch_with_retry uri with
+    | Error msg -> Error msg
+    | Ok html ->
+        (* Parse the HTML response *)
+        let soup = Soup.parse html in
 
-      (* Parse the HTML response *)
-      let soup = Soup.parse html in
+        let results =
+          soup |> Soup.select ".result" |> Soup.to_list
+          |> List.filter_map (fun result ->
+                 let title_elem =
+                   result |> Soup.select_one ".result__title > a"
+                 in
 
-      let results =
-        soup |> Soup.select ".result" |> Soup.to_list
-        |> List.filter_map (fun result ->
-               let title_elem =
-                 result |> Soup.select_one ".result__title > a"
-               in
-
-               Option.bind title_elem (function title_node ->
-                   let title =
-                     title_node |> Soup.trimmed_texts |> String.concat ""
-                   in
-                   let link =
-                     match Soup.attribute "href" title_node with
-                     | Some href when not (String.contains href 'y') -> (
-                         let uri = Uri.of_string href in
-                         match Uri.get_query_param uri "uddg" with
-                         | Some encoded_url -> Some (Uri.pct_decode encoded_url)
-                         | None -> Some href)
-                     | _ -> None
-                   in
-                   let snippet =
-                     let snippet_elem =
-                       result |> Soup.select_one ".result__snippet"
+                 Option.bind title_elem (function title_node ->
+                     let title =
+                       title_node |> Soup.trimmed_texts |> String.concat ""
                      in
-                     match snippet_elem with
-                     | Some snippet_node ->
-                         snippet_node |> Soup.trimmed_texts |> String.concat ""
-                     | None -> ""
-                   in
-                   Option.map
-                     (fun l -> { title; link = l; snippet; position = 0 })
-                     link))
-      in
-      let final_results =
-        results |> List.mapi (fun i r -> { r with position = i + 1 })
-        |> fun l -> List.filteri (fun i _ -> i < max_results) l
-      in
-      Logs.info (fun m ->
-          m "Successfully found %d results" (List.length final_results));
-      Ok final_results
+                     let link =
+                       match Soup.attribute "href" title_node with
+                       | Some href when not (String.contains href 'y') -> (
+                           let uri = Uri.of_string href in
+                           match Uri.get_query_param uri "uddg" with
+                           | Some encoded_url ->
+                               Some (Uri.pct_decode encoded_url)
+                           | None -> Some href)
+                       | _ -> None
+                     in
+                     let snippet =
+                       let snippet_elem =
+                         result |> Soup.select_one ".result__snippet"
+                       in
+                       match snippet_elem with
+                       | Some snippet_node ->
+                           snippet_node |> Soup.trimmed_texts
+                           |> String.concat ""
+                       | None -> ""
+                     in
+                     Option.map
+                       (fun l -> { title; link = l; snippet; position = 0 })
+                       link))
+        in
+        let final_results =
+          results |> List.mapi (fun i r -> { r with position = i + 1 })
+          |> fun l -> List.filteri (fun i _ -> i < max_results) l
+        in
+        Logs.info (fun m ->
+            m "Successfully found %d results" (List.length final_results));
+        Ok final_results
   with ex -> Error (Printexc.to_string ex)
 
 let search_wikipedia ~sw ~net ~clock ~rate_limiter ?(max_results = 10) query =

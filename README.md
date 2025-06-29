@@ -301,5 +301,4 @@ pip install trafilatura # Method 3: Using `pip`
 ```
 
 # TODO
-- Support response 202 in search results
 - Use pagination in the fetch
