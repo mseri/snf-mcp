@@ -194,23 +194,23 @@ curl -X POST http://localhost:8080 -H "Content-Type: application/json" -d '{
 When using stdio mode, you can pipe JSON-RPC requests to the binary:
 
 ```bash
-echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | dune exec snf-mcp -- --stdio | jq
+echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | dune exec snf-mcp | jq
 ```
 
 ```bash
-echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"search","arguments":{"query":"OCaml programming language"}},"id":2}' | dune exec snf-mcp -- --stdio | jq
+echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"search","arguments":{"query":"OCaml programming language"}},"id":2}' | dune exec snf-mcp | jq
 ```
 
 ```bash
-echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"search_wikipedia","arguments":{"query":"OCaml programming language"}},"id":3}' | dune exec snf-mcp -- --stdio | jq
+echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"search_wikipedia","arguments":{"query":"OCaml programming language"}},"id":3}' | dune exec snf-mcp | jq
 ```
 
 ```bash
-echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"fetch_content","arguments":{"url":"https://ocaml.org"}},"id":4}' | dune exec snf-mcp -- --stdio | jq
+echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"fetch_content","arguments":{"url":"https://ocaml.org"}},"id":4}' | dune exec snf-mcp | jq
 ```
 
 ```bash
-echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"fetch_markdown","arguments":{"url":"https://ocaml.org"}},"id":5}' | dune exec snf-mcp -- --stdio | jq
+echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"fetch_markdown","arguments":{"url":"https://ocaml.org"}},"id":5}' | dune exec snf-mcp | jq
 ```
 
 This mode is particularly useful when integrating with LLM clients that communicate over stdin/stdout.
