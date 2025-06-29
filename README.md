@@ -301,5 +301,5 @@ pip install trafilatura # Method 3: Using `pip`
 ```
 
 # TODO
-- Debug why response is doubly-nested
+- Support response 202 in search results
 - Use pagination in the fetch
