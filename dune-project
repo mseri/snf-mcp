@@ -23,12 +23,12 @@
   ocaml
   dune
   ca-certs
-  eio
+  (eio (>= 0.13))
   eio_main
   fmt
   cohttp
   cohttp-eio
-  jsonrpc
+  (jsonrpc (>= 1.7.0))
   lambdasoup
   logs
   (mirage-crypto-rng (>= 1.2.0))
