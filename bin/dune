@@ -4,7 +4,8 @@
  (libraries
   ca-certs
   mcp.sdk
-  mcp.server
+  mcp
+  mcp-eio
   eio
   eio_main
   cohttp
@@ -16,4 +17,6 @@
   snf
   tls
   tls-eio
-  uri))
+  uri)
+ (preprocess
+  (pps ppx_deriving_yojson)))
