@@ -39,7 +39,7 @@ let spec =
       " Suppress non-error logs (default)" );
   ]
 
-let usage_msg = "ddg_mcp [--serve PORT | --stdio]"
+let usage_msg = "snf-mcp [--serve PORT | --stdio]"
 
 let () =
   Arg.parse spec (fun _ -> ()) usage_msg;
