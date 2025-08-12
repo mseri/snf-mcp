@@ -49,12 +49,14 @@ Fetch and parse content from a webpage URL.
 **Parameters:**
 - `url` (string, required): The webpage URL to fetch content from
 - `max_length` (integer, optional): Maximum length (in bytes) of content to return (default: 8192). Set `-1` to disable length limit.
+- `start_from` (integer, optional): Byte offset to start returning content from (default: 0)
 
 **Example:**
 ```json
 {
   "url": "https://example.com/article",
-  "max_length": 16384
+  "max_length": 16384,
+  "start_from": 1024
 }
 ```
 
@@ -64,12 +66,14 @@ Fetch and parse content from a webpage URL as Markdown.
 **Parameters:**
 - `url` (string, required): The webpage URL to fetch content from
 - `max_length` (integer, optional): Maximum length (in bytes) of content to return (default: 8192). Set `-1` to disable length limit.
+- `start_from` (integer, optional): Byte offset to start returning content from (default: 0)
 
 **Example:**
 ```json
 {
   "url": "https://example.com/article",
-  "max_length": 16384
+  "max_length": 16384,
+  "start_from": 1024
 }
 ```
 

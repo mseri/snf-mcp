@@ -143,18 +143,23 @@ let () =
             "integer",
             "Maximum length (in bytes) of content to return (default: 8192 \
              characters). Use -1 to disable the limit." );
+          ( "start_from",
+            "integer",
+            "Byte offset to start returning content from (default: 0)" );
         ]
       ~schema_required:[ "url" ]
       (fun args ->
         Switch.run @@ fun sw ->
         match
-          (get_string_param args "url", get_int_param args "max_length" 8192)
+          ( get_string_param args "url",
+            get_int_param args "max_length" 8192,
+            get_int_param args "start_from" 0 )
         with
-        | Error msg, _ -> Mcp_sdk.Tool.create_error_result msg
-        | Ok url, max_length -> (
+        | Error msg, _, _ -> Mcp_sdk.Tool.create_error_result msg
+        | Ok url, max_length, start_from -> (
             match
               Fetch.fetch_and_parse ~sw ~net ~clock
-                ~rate_limiter:fetch_rate_limiter ~max_length url
+                ~rate_limiter:fetch_rate_limiter ~max_length ~start_from url
             with
             | Ok content ->
                 Mcp_sdk.Tool.create_tool_result
@@ -173,20 +178,25 @@ let () =
             "integer",
             "Maximum length (in bytes) of content to return (default: 8192 \
              characters). Use -1 to disable the limit." );
+          ( "start_from",
+            "integer",
+            "Byte offset to start returning content from (default: 0)" );
         ]
       ~schema_required:[ "url" ]
       (fun args ->
         Switch.run @@ fun sw ->
         match
-          (get_string_param args "url", get_int_param args "max_length" 8192)
+          ( get_string_param args "url",
+            get_int_param args "max_length" 8192,
+            get_int_param args "start_from" 0 )
         with
-        | Error msg, _ -> Mcp_sdk.Tool.create_error_result msg
-        | Ok url, max_length -> (
+        | Error msg, _, _ -> Mcp_sdk.Tool.create_error_result msg
+        | Ok url, max_length, start_from -> (
             (* Instead of using max_length to cut the content, we should use Cursor.t to allow for batched fetching of content in chunks *)
             match
               Fetch.fetch_markdown ~sw ~net ~clock
-                ~rate_limiter:fetch_rate_limiter ~max_length ~use_trafilatura
-                url
+                ~rate_limiter:fetch_rate_limiter ~max_length ~start_from
+                ~use_trafilatura url
             with
             | Ok content ->
                 Mcp_sdk.Tool.create_tool_result

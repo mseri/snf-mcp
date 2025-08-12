@@ -12,6 +12,12 @@ let truncate_at max_length content =
     String.sub content 0 max_length ^ "... [content truncated]"
   else content
 
+let slice_from_offset start_from content =
+  if start_from > 0 && start_from < String.length content then
+    String.sub content start_from (String.length content - start_from)
+  else if start_from >= String.length content then ""
+  else content
+
 let rec get_with_redirects ~sw ~client ~headers ~max_redirects current_url =
   let current_url =
     if
@@ -55,7 +61,7 @@ let rec get_with_redirects ~sw ~client ~headers ~max_redirects current_url =
              (Http.Status.to_string status))
 
 let fetch_markdown ~sw ~net ~clock ~rate_limiter ?(max_length = 8192)
-    ~use_trafilatura url =
+    ?(start_from = 0) ~use_trafilatura url =
   try
     if use_trafilatura then
       let ic =
@@ -65,7 +71,8 @@ let fetch_markdown ~sw ~net ~clock ~rate_limiter ?(max_length = 8192)
       let exit_code = Unix.close_process_in ic in
       match exit_code with
       | WEXITED 0 ->
-          let truncated_text = truncate_at max_length output in
+          let sliced_text = slice_from_offset start_from output in
+          let truncated_text = truncate_at max_length sliced_text in
           Logs.info (fun m ->
               m "Successfully fetched and parsed content (%d characters)"
                 (String.length truncated_text));
@@ -81,6 +88,12 @@ let fetch_markdown ~sw ~net ~clock ~rate_limiter ?(max_length = 8192)
       let client = Cohttp_eio.Client.make ~https:(Some (Https.make ())) net in
       let url = "https://r.jina.ai/" ^ url in
       let headers = Http.Header.add headers "X-Base" "final" in
+      let headers =
+        if start_from > 0 then
+          Http.Header.add headers "Range"
+            (Printf.sprintf "bytes=%d-" start_from)
+        else headers
+      in
 
       (* Use the get_with_redirects function to handle redirects *)
       match Cohttp_eio.Client.get ~sw ~headers client (Uri.of_string url) with
@@ -88,7 +101,12 @@ let fetch_markdown ~sw ~net ~clock ~rate_limiter ?(max_length = 8192)
           let content =
             Eio.Buf_read.(parse_exn take_all) body ~max_size:max_int
           in
-          let truncated_text = truncate_at max_length content in
+          (* If server doesn't support Range requests, slice the content manually *)
+          let sliced_content =
+            if resp.status = `Partial_content then content
+            else slice_from_offset start_from content
+          in
+          let truncated_text = truncate_at max_length sliced_content in
           Logs.info (fun m ->
               m "Successfully fetched content (%d characters)"
                 (String.length truncated_text));
@@ -104,7 +122,8 @@ let fetch_markdown ~sw ~net ~clock ~rate_limiter ?(max_length = 8192)
          "An unexpected error occurred while fetching the webpage (%s)"
          (Printexc.to_string ex))
 
-let fetch_and_parse ~sw ~net ~clock ~rate_limiter ?(max_length = 8192) url =
+let fetch_and_parse ~sw ~net ~clock ~rate_limiter ?(max_length = 8192)
+    ?(start_from = 0) url =
   try
     Rate_limiter.acquire rate_limiter clock;
     Logs.info (fun m -> m "Fetching content from: %s" url);
@@ -131,7 +150,8 @@ let fetch_and_parse ~sw ~net ~clock ~rate_limiter ?(max_length = 8192) url =
                ~by:" " (* Replace multiple whitespace with a single space *)
         in
 
-        let truncated_text = truncate_at max_length text in
+        let sliced_text = slice_from_offset start_from text in
+        let truncated_text = truncate_at max_length sliced_text in
         Logs.info (fun m ->
             m "Successfully fetched and parsed content (%d characters)"
               (String.length truncated_text));
