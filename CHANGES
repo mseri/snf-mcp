@@ -1,3 +1,8 @@
+# 2025-09-09
+
+- add `start_from` for fetching
+- fix help string
+
 # 2025-06-29
 
 - First release
