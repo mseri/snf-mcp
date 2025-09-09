@@ -5,7 +5,7 @@
 (generate_opam_files true)
 
 (source
- (github mseri/snf_mcp))
+ (github mseri/snf-mcp))
 
 (authors "Marcello Seri <marcello.seri@gmail.com>")
 
