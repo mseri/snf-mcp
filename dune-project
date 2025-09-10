@@ -34,7 +34,7 @@
   (mirage-crypto-rng (>= 1.2.0))
   re
   tls-eio
-  (yojson (< 3.0.0))
+  (yojson (and (>= 1.6.0) (< 3.0.0)))
   uri)
  (tags
   ("mcp" "fetch" "search" "web" "eio" "ocaml")))
