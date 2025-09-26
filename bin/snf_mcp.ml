@@ -69,13 +69,16 @@ let () =
   let clock = Eio.Stdenv.clock env in
 
   let server =
-    Mcp_sdk.create_server ~name:"ocaml-search-and-fetch" ~version:"0.2.0" ()
+    Mcp_sdk.create_server ~name:"search-and-fetch" ~version:"0.2.1" ()
     |> fun server -> Mcp_sdk.configure_server server ~with_tools:true ()
   in
 
   let _ =
     Mcp_sdk.add_tool server ~name:"search"
-      ~description:"Search DuckDuckGo and return formatted results."
+      ~description:
+        "Search DuckDuckGo and return results in a json object that includes \
+         title, url, and a brief description. The content of the results can \
+         be accessed using the fetch_* tools."
       ~schema_properties:
         [
           ("query", "string", "The search query string");
@@ -105,7 +108,10 @@ let () =
 
   let _ =
     Mcp_sdk.add_tool server ~name:"search_wikipedia"
-      ~description:"Search Wikipedia and return formatted results."
+      ~description:
+        "Search Wikipedia and return results in a json object that includes \
+         title, url, and a brief description. The content of the results can \
+         be accessed using the fetch_* tools."
       ~schema_properties:
         [
           ("query", "string", "The search query string");
@@ -135,7 +141,9 @@ let () =
 
   let _ =
     Mcp_sdk.add_tool server ~name:"fetch_content"
-      ~description:"Fetch and parse content from a webpage URL."
+      ~description:
+        "Fetch content from a webpage URL, stripping it of unnecessary html \
+         tags."
       ~schema_properties:
         [
           ("url", "string", "The webpage URL to fetch content from");
@@ -170,7 +178,9 @@ let () =
 
   let _ =
     Mcp_sdk.add_tool server ~name:"fetch_markdown"
-      ~description:"Fetch and parse content from a webpage URL as Markdown."
+      ~description:
+        "Fetch and parse content from a webpage URL as Markdown, preserving \
+         links and formatting."
       ~schema_properties:
         [
           ("url", "string", "The webpage URL to fetch content from");

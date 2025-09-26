@@ -65,7 +65,9 @@ let fetch_markdown ~sw ~net ~clock ~rate_limiter ?(max_length = 8192)
   try
     if use_trafilatura then
       let ic =
-        Unix.open_process_args_in "trafilatura" [| "markdown"; "-u"; url |]
+        (* Drop images but keep formatting and urls, not yet sure what is the best choice here *)
+        Unix.open_process_args_in "trafilatura"
+          [| "markdown"; "--formatting"; "--links"; "-u"; url |]
       in
       let output = In_channel.input_all ic in
       let exit_code = Unix.close_process_in ic in
