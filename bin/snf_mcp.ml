@@ -321,9 +321,16 @@ let () =
       let connection =
         Mcp_eio.Connection.create ~clock (module Mcp_eio.Stdio) transport
       in
-      let mcp_server = Mcp_sdk_eio.Server.to_mcp_server server in
-      Mcp_eio.Connection.serve ~sw connection (mcp_server ~sw)
+      Mcp_sdk_eio.Server.run ~sw ~env server connection
   | Port port ->
       Logs.info (fun m -> m "Starting MCP server on port %d" port);
-      (* Port mode not implemented in new SDK yet *)
-      failwith "Port mode not yet supported"
+      let transport = Mcp_eio.Http.create_server ~sw ~port () in
+      let clock = Eio.Stdenv.clock env in
+      let connection =
+        Mcp_eio.Connection.create ~clock (module Mcp_eio.Http) transport
+      in
+      Logs.info (fun m ->
+          m "MCP HTTP Server listening on http://localhost:%d" port);
+
+      Eio.Fiber.fork ~sw (fun () -> Mcp_eio.Http.run_server transport env);
+      Mcp_sdk_eio.Server.run ~sw ~env server connection
