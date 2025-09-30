@@ -11,4 +11,5 @@
   re
   tls
   tls-eio
-  uri))
+  uri)
+  (preprocess (pps ppx_deriving_yojson)))

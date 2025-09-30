@@ -3,8 +3,7 @@
  (public_name snf-mcp)
  (libraries
   ca-certs
-  mcp.sdk
-  mcp.server
+  mcp mcp.sdk mcp-eio.sdk
   eio
   eio_main
   cohttp

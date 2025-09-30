@@ -1,30 +1,29 @@
 (executable
- (name capitalize_sdk)
- (modules capitalize_sdk)
- (libraries logs mcp mcp_server yojson eio_main eio))
+ (package mcp-eio)
+ (public_name mcp)
+ (name mcp_client)
+ (modules mcp_client)
+ (libraries mcp mcp-eio eio eio_main jsonrpc yojson))
 
 (executable
- (name multimodal_sdk)
- (modules multimodal_sdk)
- (libraries logs mcp mcp_sdk mcp_server yojson eio_main eio))
-
-(executable
- (name ocaml_eval_sdk)
- (modes byte)
- (modules ocaml_eval_sdk)
- (flags
-  (:standard -w -32 -w -33))
+ (public_name ocaml-mcp-server)
+ (package ocaml-mcp-server)
+ (name ocaml_mcp_server)
+ (modules ocaml_mcp_server)
  (libraries
-  logs
+  unix
   mcp
-  mcp_sdk
-  mcp_server
-  yojson
-  eio_main
+  mcp-eio
+  ocaml-mcp-server
   eio
-  compiler-libs.toplevel))
-
-(executable
- (name markdown_book_sdk)
- (modules markdown_book_sdk)
- (libraries logs mcp mcp_sdk mcp_server yojson eio_main eio))
+  eio_main
+  logs
+  logs.fmt
+  logs.threaded
+  fmt
+  fmt.tty
+  fmt.cli
+  logs.cli
+  cmdliner
+  jsonrpc
+  yojson))

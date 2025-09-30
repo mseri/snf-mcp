@@ -4,6 +4,38 @@ type search_result = {
   snippet : string;
   position : int;
 }
+[@@deriving yojson]
+
+module Args = struct
+  type t = { query : string; max_results : int [@default 10] }
+  [@@deriving yojson]
+
+  let schema () =
+    `Assoc
+      [
+        ("type", `String "object");
+        ( "properties",
+          `Assoc
+            [
+              ( "query",
+                `Assoc
+                  [
+                    ("type", `String "string");
+                    ("description", `String "The search query string");
+                  ] );
+              ( "max_results",
+                `Assoc
+                  [
+                    ("type", `String "integer");
+                    ( "description",
+                      `String
+                        "Maximum number of results to return (default: 10)" );
+                    ("default", `Int 10);
+                  ] );
+            ] );
+        ("required", `List [ `String "query" ]);
+      ]
+end
 
 let whitespace_re = Re.compile Re.(rep1 blank)
 let wiki_opensnippet_re = Re.compile (Re.str "<span class=\"searchmatch\">")

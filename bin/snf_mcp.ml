@@ -69,41 +69,68 @@ let () =
   let clock = Eio.Stdenv.clock env in
 
   let server =
-    Mcp_sdk.create_server ~name:"search-and-fetch" ~version:"0.2.1" ()
-    |> fun server -> Mcp_sdk.configure_server server ~with_tools:true ()
+    Mcp_sdk_eio.Server.create
+      ~server_info:{ name = "search-and-fetch"; version = "0.2.1" }
+      ()
   in
 
-  let _ =
-    Mcp_sdk.add_tool server ~name:"search"
+  let register_tools sw =
+    Mcp_sdk_eio.Server.tool server "search" ~title:"DuckDuckGo Search"
       ~description:
-        "Search DuckDuckGo and return results in a json object that includes \
-         title, url, and a brief description. The content of the results can \
-         be accessed using the fetch_* tools."
-      ~schema_properties:
-        [
-          ("query", "string", "The search query string");
-          ( "max_results",
-            "integer",
-            "Maximum number of results to return (default: 10)" );
-        ]
-      ~schema_required:[ "query" ]
-      (fun args ->
-        Switch.run @@ fun sw ->
-        match
-          (get_string_param args "query", get_int_param args "max_results" 10)
-        with
-        | Error msg, _ -> Mcp_sdk.Tool.create_error_result msg
-        | Ok query, max_results -> (
-            match
-              Search.search ~sw ~net ~clock ~rate_limiter:search_rate_limiter
-                query max_results
-            with
-            | Ok results ->
-                let results = Search.format_results_for_llm results in
-                Mcp_sdk.Tool.create_tool_result
-                  [ Mcp.make_text_content results ]
-                  ~is_error:false
-            | Error msg -> Mcp_sdk.Tool.create_error_result msg))
+        "Search the web with DuckDuckGo and return results in a json object \
+         that includes title, url, and a brief description. The content of the \
+         results can be accessed using the fetch_* tools."
+      ~args:(module Snf.Search.Args)
+      (fun args _ctx ->
+        let fmt_err msg =
+          {
+            Mcp.Request.Tools.Call.content =
+              [
+                Mcp.Types.Content.Text
+                  { type_ = "text"; text = msg; meta = None };
+              ];
+            is_error = Some true;
+            structured_content = None;
+            meta = None;
+          }
+        in
+        let promise, resolver = Eio.Promise.create () in
+        Eio.Fiber.fork ~sw (fun () ->
+            let result =
+              match
+                let args = Snf.Search.Args.to_yojson args in
+                ( get_string_param args "query",
+                  get_int_param args "max_results" 10 )
+              with
+              | Error msg, _ -> Ok (fmt_err msg)
+              | Ok query, max_results -> (
+                  match
+                    Search.search ~sw ~net ~clock
+                      ~rate_limiter:search_rate_limiter query max_results
+                  with
+                  | Ok results ->
+                      let output =
+                        `String (Search.format_results_for_llm results)
+                      in
+                      Ok
+                        {
+                          Mcp.Request.Tools.Call.content =
+                            [
+                              Mcp.Types.Content.Text
+                                {
+                                  type_ = "text";
+                                  text = Yojson.Safe.to_string output;
+                                  meta = None;
+                                };
+                            ];
+                          is_error = Some false;
+                          structured_content = Some output;
+                          meta = None;
+                        }
+                  | Error msg -> Ok (fmt_err msg))
+            in
+            Eio.Promise.resolve resolver result);
+        promise)
   in
 
   let _ =
