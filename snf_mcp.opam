@@ -24,6 +24,7 @@ depends: [
   "lambdasoup"
   "logs"
   "mirage-crypto-rng" {>= "1.2.0"}
+  "ppx_deriving_mcp"
   "re"
   "tls-eio"
   "yojson" {>= "1.6.0" & < "3.0.0"}
