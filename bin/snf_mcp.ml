@@ -78,7 +78,8 @@ let () =
       ~description:
         "Search DuckDuckGo and return results in a json object that includes \
          title, url, and a brief description. The content of the results can \
-         be accessed using the fetch_* tools."
+         be accessed using the fetch_* tools. Prefer fetching the markdown to \
+         reduce token usage."
       ~schema_properties:
         [
           ("query", "string", "The search query string");
@@ -111,7 +112,8 @@ let () =
       ~description:
         "Search Wikipedia and return results in a json object that includes \
          title, url, and a brief description. The content of the results can \
-         be accessed using the fetch_* tools."
+         be accessed using the fetch_* tools. Prefer fetching the markdown to \
+         reduce token usage."
       ~schema_properties:
         [
           ("query", "string", "The search query string");
@@ -180,7 +182,8 @@ let () =
     Mcp_sdk.add_tool server ~name:"fetch_markdown"
       ~description:
         "Fetch and parse content from a webpage URL as Markdown, preserving \
-         links and formatting."
+         links and formatting. Prefer this over fetch_content to reduce token \
+         usage."
       ~schema_properties:
         [
           ("url", "string", "The webpage URL to fetch content from");
