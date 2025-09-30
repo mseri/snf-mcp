@@ -1,5 +1,9 @@
-module Args = struct
-  type t = { query : string; max_results : int [@default 10] }
+module FetchContentArgs = struct
+  type t = {
+    url : string;
+    max_length : int; [@default 8192]
+    start_from : int; [@default 0]
+  }
   [@@deriving yojson]
 
   let schema () =
@@ -9,23 +13,84 @@ module Args = struct
         ( "properties",
           `Assoc
             [
-              ( "query",
+              ( "url",
                 `Assoc
                   [
                     ("type", `String "string");
-                    ("description", `String "The search query string");
+                    ( "description",
+                      `String "The webpage URL to fetch content from" );
                   ] );
-              ( "max_results",
+              ( "max_length",
                 `Assoc
                   [
                     ("type", `String "integer");
                     ( "description",
                       `String
-                        "Maximum number of results to return (default: 10)" );
-                    ("default", `Int 10);
+                        "Maximum length (in bytes) of content to return \
+                         (default: 8192 characters). Use -1 to disable the \
+                         limit." );
+                    ("default", `Int 8192);
+                  ] );
+              ( "start_from",
+                `Assoc
+                  [
+                    ("type", `String "integer");
+                    ( "description",
+                      `String
+                        "Byte offset to start returning content from (default: \
+                         0)" );
+                    ("default", `Int 0);
                   ] );
             ] );
-        ("required", `List [ `String "query" ]);
+        ("required", `List [ `String "url" ]);
+      ]
+end
+
+module FetchMarkdownArgs = struct
+  type t = {
+    url : string;
+    max_length : int; [@default 8192]
+    start_from : int; [@default 0]
+  }
+  [@@deriving yojson]
+
+  let schema () =
+    `Assoc
+      [
+        ("type", `String "object");
+        ( "properties",
+          `Assoc
+            [
+              ( "url",
+                `Assoc
+                  [
+                    ("type", `String "string");
+                    ( "description",
+                      `String "The webpage URL to fetch content from" );
+                  ] );
+              ( "max_length",
+                `Assoc
+                  [
+                    ("type", `String "integer");
+                    ( "description",
+                      `String
+                        "Maximum length (in bytes) of content to return \
+                         (default: 8192 characters). Use -1 to disable the \
+                         limit." );
+                    ("default", `Int 8192);
+                  ] );
+              ( "start_from",
+                `Assoc
+                  [
+                    ("type", `String "integer");
+                    ( "description",
+                      `String
+                        "Byte offset to start returning content from (default: \
+                         0)" );
+                    ("default", `Int 0);
+                  ] );
+            ] );
+        ("required", `List [ `String "url" ]);
       ]
 end
 

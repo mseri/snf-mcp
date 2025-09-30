@@ -1,4 +1,3 @@
-open Eio.Std
 open Snf
 
 (* Helper for extracting string value from JSON arguments *)
@@ -80,7 +79,7 @@ let () =
         "Search the web with DuckDuckGo and return results in a json object \
          that includes title, url, and a brief description. The content of the \
          results can be accessed using the fetch_* tools."
-      ~args:(module Snf.Search.Args)
+      ~args:(module Search.Args)
       (fun args _ctx ->
         let fmt_err msg =
           {
@@ -98,7 +97,7 @@ let () =
         Eio.Fiber.fork ~sw (fun () ->
             let result =
               match
-                let args = Snf.Search.Args.to_yojson args in
+                let args = Search.Args.to_yojson args in
                 ( get_string_param args "query",
                   get_int_param args "max_results" 10 )
               with
@@ -130,128 +129,201 @@ let () =
                   | Error msg -> Ok (fmt_err msg))
             in
             Eio.Promise.resolve resolver result);
-        promise)
-  in
+        promise);
 
-  let _ =
-    Mcp_sdk.add_tool server ~name:"search_wikipedia"
+    Mcp_sdk_eio.Server.tool server "search_wikipedia" ~title:"Wikipedia Search"
       ~description:
         "Search Wikipedia and return results in a json object that includes \
          title, url, and a brief description. The content of the results can \
          be accessed using the fetch_* tools."
-      ~schema_properties:
-        [
-          ("query", "string", "The search query string");
-          ( "max_results",
-            "integer",
-            "Maximum number of results to return (default: 10)" );
-        ]
-      ~schema_required:[ "query" ]
-      (fun args ->
-        Switch.run @@ fun sw ->
-        match
-          (get_string_param args "query", get_int_param args "max_results" 10)
-        with
-        | Error msg, _ -> Mcp_sdk.Tool.create_error_result msg
-        | Ok query, max_results -> (
-            match
-              Search.search_wikipedia ~sw ~net ~clock
-                ~rate_limiter:search_rate_limiter ~max_results query
-            with
-            | Ok results ->
-                let results = Search.format_results_for_llm results in
-                Mcp_sdk.Tool.create_tool_result
-                  [ Mcp.make_text_content results ]
-                  ~is_error:false
-            | Error msg -> Mcp_sdk.Tool.create_error_result msg))
-  in
+      ~args:(module Search.Args)
+      (fun args _ctx ->
+        let fmt_err msg =
+          {
+            Mcp.Request.Tools.Call.content =
+              [
+                Mcp.Types.Content.Text
+                  { type_ = "text"; text = msg; meta = None };
+              ];
+            is_error = Some true;
+            structured_content = None;
+            meta = None;
+          }
+        in
+        let promise, resolver = Eio.Promise.create () in
+        Eio.Fiber.fork ~sw (fun () ->
+            let result =
+              match
+                let args = Search.Args.to_yojson args in
+                ( get_string_param args "query",
+                  get_int_param args "max_results" 10 )
+              with
+              | Error msg, _ -> Ok (fmt_err msg)
+              | Ok query, max_results -> (
+                  match
+                    Search.search_wikipedia ~sw ~net ~clock
+                      ~rate_limiter:search_rate_limiter ~max_results query
+                  with
+                  | Ok results ->
+                      let output =
+                        `String (Search.format_results_for_llm results)
+                      in
+                      Ok
+                        {
+                          Mcp.Request.Tools.Call.content =
+                            [
+                              Mcp.Types.Content.Text
+                                {
+                                  type_ = "text";
+                                  text = Yojson.Safe.to_string output;
+                                  meta = None;
+                                };
+                            ];
+                          is_error = Some false;
+                          structured_content = Some output;
+                          meta = None;
+                        }
+                  | Error msg -> Ok (fmt_err msg))
+            in
+            Eio.Promise.resolve resolver result);
+        promise);
 
-  let _ =
-    Mcp_sdk.add_tool server ~name:"fetch_content"
+    Mcp_sdk_eio.Server.tool server "fetch_content" ~title:"Fetch Web Content"
       ~description:
         "Fetch content from a webpage URL, stripping it of unnecessary html \
          tags."
-      ~schema_properties:
-        [
-          ("url", "string", "The webpage URL to fetch content from");
-          ( "max_length",
-            "integer",
-            "Maximum length (in bytes) of content to return (default: 8192 \
-             characters). Use -1 to disable the limit." );
-          ( "start_from",
-            "integer",
-            "Byte offset to start returning content from (default: 0)" );
-        ]
-      ~schema_required:[ "url" ]
-      (fun args ->
-        Switch.run @@ fun sw ->
-        match
-          ( get_string_param args "url",
-            get_int_param args "max_length" 8192,
-            get_int_param args "start_from" 0 )
-        with
-        | Error msg, _, _ -> Mcp_sdk.Tool.create_error_result msg
-        | Ok url, max_length, start_from -> (
-            match
-              Fetch.fetch_and_parse ~sw ~net ~clock
-                ~rate_limiter:fetch_rate_limiter ~max_length ~start_from url
-            with
-            | Ok content ->
-                Mcp_sdk.Tool.create_tool_result
-                  [ Mcp.make_text_content content ]
-                  ~is_error:false
-            | Error msg -> Mcp_sdk.Tool.create_error_result msg))
-  in
+      ~args:(module Fetch.FetchContentArgs)
+      (fun args _ctx ->
+        let fmt_err msg =
+          {
+            Mcp.Request.Tools.Call.content =
+              [
+                Mcp.Types.Content.Text
+                  { type_ = "text"; text = msg; meta = None };
+              ];
+            is_error = Some true;
+            structured_content = None;
+            meta = None;
+          }
+        in
+        let promise, resolver = Eio.Promise.create () in
+        Eio.Fiber.fork ~sw (fun () ->
+            let result =
+              match
+                let args = Fetch.FetchContentArgs.to_yojson args in
+                ( get_string_param args "url",
+                  get_int_param args "max_length" 8192,
+                  get_int_param args "start_from" 0 )
+              with
+              | Error msg, _, _ -> Ok (fmt_err msg)
+              | Ok url, max_length, start_from -> (
+                  match
+                    Fetch.fetch_and_parse ~sw ~net ~clock
+                      ~rate_limiter:fetch_rate_limiter ~max_length ~start_from
+                      url
+                  with
+                  | Ok content ->
+                      let output = `String content in
+                      Ok
+                        {
+                          Mcp.Request.Tools.Call.content =
+                            [
+                              Mcp.Types.Content.Text
+                                {
+                                  type_ = "text";
+                                  text = Yojson.Safe.to_string output;
+                                  meta = None;
+                                };
+                            ];
+                          is_error = Some false;
+                          structured_content = Some output;
+                          meta = None;
+                        }
+                  | Error msg -> Ok (fmt_err msg))
+            in
+            Eio.Promise.resolve resolver result);
+        promise);
 
-  let _ =
-    Mcp_sdk.add_tool server ~name:"fetch_markdown"
+    Mcp_sdk_eio.Server.tool server "fetch_markdown"
+      ~title:"Fetch Markdown Content"
       ~description:
         "Fetch and parse content from a webpage URL as Markdown, preserving \
          links and formatting."
-      ~schema_properties:
-        [
-          ("url", "string", "The webpage URL to fetch content from");
-          ( "max_length",
-            "integer",
-            "Maximum length (in bytes) of content to return (default: 8192 \
-             characters). Use -1 to disable the limit." );
-          ( "start_from",
-            "integer",
-            "Byte offset to start returning content from (default: 0)" );
-        ]
-      ~schema_required:[ "url" ]
-      (fun args ->
-        Switch.run @@ fun sw ->
-        match
-          ( get_string_param args "url",
-            get_int_param args "max_length" 8192,
-            get_int_param args "start_from" 0 )
-        with
-        | Error msg, _, _ -> Mcp_sdk.Tool.create_error_result msg
-        | Ok url, max_length, start_from -> (
-            (* Instead of using max_length to cut the content, we should use Cursor.t to allow for batched fetching of content in chunks *)
-            match
-              Fetch.fetch_markdown ~sw ~net ~clock
-                ~rate_limiter:fetch_rate_limiter ~max_length ~start_from
-                ~use_trafilatura url
-            with
-            | Ok content ->
-                Mcp_sdk.Tool.create_tool_result
-                  [ Mcp.make_text_content content ]
-                  ~is_error:false
-            | Error msg -> Mcp_sdk.Tool.create_error_result msg))
+      ~args:(module Fetch.FetchMarkdownArgs)
+      (fun args _ctx ->
+        let fmt_err msg =
+          {
+            Mcp.Request.Tools.Call.content =
+              [
+                Mcp.Types.Content.Text
+                  { type_ = "text"; text = msg; meta = None };
+              ];
+            is_error = Some true;
+            structured_content = None;
+            meta = None;
+          }
+        in
+        let promise, resolver = Eio.Promise.create () in
+        Eio.Fiber.fork ~sw (fun () ->
+            let result =
+              match
+                let args = Fetch.FetchMarkdownArgs.to_yojson args in
+                ( get_string_param args "url",
+                  get_int_param args "max_length" 8192,
+                  get_int_param args "start_from" 0 )
+              with
+              | Error msg, _, _ -> Ok (fmt_err msg)
+              | Ok url, max_length, start_from -> (
+                  (* Instead of using max_length to cut the content, we should use Cursor.t to allow for batched fetching of content in chunks *)
+                  match
+                    Fetch.fetch_markdown ~sw ~net ~clock
+                      ~rate_limiter:fetch_rate_limiter ~max_length ~start_from
+                      ~use_trafilatura url
+                  with
+                  | Ok content ->
+                      let output = `String content in
+                      Ok
+                        {
+                          Mcp.Request.Tools.Call.content =
+                            [
+                              Mcp.Types.Content.Text
+                                {
+                                  type_ = "text";
+                                  text = Yojson.Safe.to_string output;
+                                  meta = None;
+                                };
+                            ];
+                          is_error = Some false;
+                          structured_content = Some output;
+                          meta = None;
+                        }
+                  | Error msg -> Ok (fmt_err msg))
+            in
+            Eio.Promise.resolve resolver result);
+        promise)
   in
 
-  let on_error exn =
+  (* let on_error exn =
     Logs.err (fun m ->
         m "Unhandled server error: %s\n%s" (Printexc.to_string exn)
           (Printexc.get_backtrace ()))
-  in
+  in *)
+  Eio.Switch.run @@ fun sw ->
+  register_tools sw;
 
   match !server_mode with
   | Stdio ->
       Logs.info (fun m -> m "Starting MCP server in stdio mode");
-      Mcp_server.run_sdtio_server env server
+      let stdin = Eio.Stdenv.stdin env in
+      let stdout = Eio.Stdenv.stdout env in
+      let transport = Mcp_eio.Stdio.create ~stdin ~stdout in
+      let clock = Eio.Stdenv.clock env in
+      let connection =
+        Mcp_eio.Connection.create ~clock (module Mcp_eio.Stdio) transport
+      in
+      let mcp_server = Mcp_sdk_eio.Server.to_mcp_server server in
+      Mcp_eio.Connection.serve ~sw connection (mcp_server ~sw)
   | Port port ->
       Logs.info (fun m -> m "Starting MCP server on port %d" port);
-      Mcp_server.run_server env server ~port ~on_error
+      (* Port mode not implemented in new SDK yet *)
+      failwith "Port mode not yet supported"
