@@ -32,6 +32,7 @@
   lambdasoup
   logs
   (mirage-crypto-rng (>= 1.2.0))
+  ppx_deriving_yojson
   re
   tls-eio
   (yojson (and (>= 1.6.0) (< 3.0.0)))
