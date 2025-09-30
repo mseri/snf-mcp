@@ -78,7 +78,8 @@ let () =
       ~description:
         "Search the web with DuckDuckGo and return results in a json object \
          that includes title, url, and a brief description. The content of the \
-         results can be accessed using the fetch_* tools."
+         results can be accessed using the fetch_* tools. Prefer fetching the \
+         markdown to reduce token usage."
       ~args:(module Search.Args)
       (fun args _ctx ->
         let fmt_err msg =
@@ -135,7 +136,8 @@ let () =
       ~description:
         "Search Wikipedia and return results in a json object that includes \
          title, url, and a brief description. The content of the results can \
-         be accessed using the fetch_* tools."
+         be accessed using the fetch_* tools. Prefer fetching the markdown to \
+         reduce token usage."
       ~args:(module Search.Args)
       (fun args _ctx ->
         let fmt_err msg =
@@ -248,7 +250,7 @@ let () =
       ~title:"Fetch Markdown Content"
       ~description:
         "Fetch and parse content from a webpage URL as Markdown, preserving \
-         links and formatting."
+         links and formatting. Prefer this method to reduce token usage."
       ~args:(module Fetch.FetchMarkdownArgs)
       (fun args _ctx ->
         let fmt_err msg =
