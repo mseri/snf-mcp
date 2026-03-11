@@ -19,8 +19,22 @@ type server_mode = Stdio | Port of int
 
 let log_level = ref Logs.Error
 let server_mode = ref Stdio
+let cors_policy = ref Mcp_server.Localhost
+
 let set_port port = server_mode := Port port
 let set_stdio () = server_mode := Stdio
+
+let set_cors value =
+  match String.lowercase_ascii (String.trim value) with
+  | "off" | "disabled" | "none" -> cors_policy := Mcp_server.Disabled
+  | "localhost" -> cors_policy := Mcp_server.Localhost
+  | origins ->
+      let list =
+        String.split_on_char ',' origins
+        |> List.map String.trim
+        |> List.filter (fun s -> s <> "")
+      in
+      cors_policy := Mcp_server.Origins list
 
 let spec =
   [
@@ -28,6 +42,11 @@ let spec =
     ( "--stdio",
       Arg.Unit set_stdio,
       " Use stdio for communication instead of port (default)" );
+    ( "--cors",
+      Arg.String set_cors,
+      " CORS policy for the HTTP server: 'off' to disable, 'localhost' to \
+       allow localhost origins (default), or a comma-separated list of allowed \
+       origins e.g. 'https://example.com,http://localhost:3000'" );
     ( "--debug",
       Arg.Unit (fun () -> log_level := Logs.Debug),
       " Enable debug logging" );
@@ -39,7 +58,7 @@ let spec =
       " Suppress non-error logs (default)" );
   ]
 
-let usage_msg = "snf-mcp [--serve PORT | --stdio]"
+let usage_msg = "snf-mcp [--serve PORT | --stdio] [--cors off|localhost|ORIGINS]"
 
 let () =
   Arg.parse spec (fun _ -> ()) usage_msg;
@@ -230,4 +249,4 @@ let () =
       Mcp_server.run_sdtio_server env server
   | Port port ->
       Logs.info (fun m -> m "Starting MCP server on port %d" port);
-      Mcp_server.run_server env server ~port ~on_error
+      Mcp_server.run_server env server ~port ~on_error ~cors:!cors_policy

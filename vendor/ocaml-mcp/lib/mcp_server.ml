@@ -13,6 +13,15 @@ let create_jsonrpc_error id code message ?data () =
   create_error ~id ~code:error_code ~message ~data:(Some error_data) ()
 
 (* Process initialize request *)
+(* Known protocol versions in descending preference order *)
+let known_protocol_versions = [ "2025-03-26"; "2024-11-05" ]
+
+(* Negotiate the best protocol version: use the client's requested version if
+   the server knows it, otherwise fall back to the server's own version. *)
+let negotiate_protocol_version ~server_version ~client_version =
+  if List.mem client_version known_protocol_versions then client_version
+  else server_version
+
 let handle_initialize server req =
   Log.debug (fun m -> m "Processing initialize request");
   let result =
@@ -25,12 +34,20 @@ let handle_initialize server req =
         Log.debug (fun m ->
             m "Client protocol version: %s" req_data.protocol_version);
 
+        let negotiated_version =
+          negotiate_protocol_version
+            ~server_version:(protocol_version server)
+            ~client_version:req_data.protocol_version
+        in
+        Log.debug (fun m ->
+            m "Negotiated protocol version: %s" negotiated_version);
+
         (* Create initialize response *)
         let result =
           Initialize.Result.create ~capabilities:(capabilities server)
             ~server_info:
               Implementation.{ name = name server; version = version server }
-            ~protocol_version:(protocol_version server)
+            ~protocol_version:negotiated_version
             ~instructions:
               (Printf.sprintf "This server provides tools for %s." (name server))
             ()
@@ -474,8 +491,68 @@ let send_response stdout response =
   Eio.Flow.copy_string "\n" stdout
 
 (* Run the MCP server with the given server configuration *)
-let callback mcp_server _conn (request : Http.Request.t) body =
+(** CORS policy for the HTTP server.
+    - [Disabled]       – no CORS headers are ever sent.
+    - [Localhost]      – allow the standard localhost origins
+                         (localhost, 127.0.0.1, ::1 on both http and https).
+    - [Origins list]   – allow exactly the origins in [list]; each entry must
+                         be a full origin string, e.g. "https://example.com". *)
+type cors_policy =
+  | Disabled
+  | Localhost
+  | Origins of string list
+
+let localhost_origins = [
+  "http://localhost";
+  "https://localhost";
+  "http://127.0.0.1";
+  "https://127.0.0.1";
+  "http://[::1]";
+  "https://[::1]";
+]
+
+(** Return true when [origin] starts with [prefix], used to match origins that
+    may carry a port suffix, e.g. "http://localhost:3000". *)
+let origin_matches_prefix origin prefix =
+  let plen = String.length prefix in
+  String.length origin >= plen && String.sub origin 0 plen = prefix
+
+let is_origin_allowed policy origin =
+  match policy with
+  | Disabled -> false
+  | Localhost ->
+      List.exists (origin_matches_prefix origin) localhost_origins
+  | Origins allowed ->
+      List.mem origin allowed
+
+let cors_response_headers origin =
+  [
+    ("Access-Control-Allow-Origin", origin);
+    ("Access-Control-Allow-Methods", "POST, OPTIONS");
+    ("Access-Control-Allow-Headers", "Content-Type, Authorization, mcp-protocol-version");
+    ("Access-Control-Max-Age", "86400");
+    ("Vary", "Origin");
+  ]
+
+let add_cors_headers policy base_headers request =
+  match policy with
+  | Disabled -> base_headers
+  | _ ->
+      let origin = Http.Header.get (Http.Request.headers request) "origin" in
+      (match origin with
+      | None -> base_headers
+      | Some origin when is_origin_allowed policy origin ->
+          Http.Header.add_list base_headers (cors_response_headers origin)
+      | Some _ -> base_headers)
+
+let callback ?(cors = Localhost) mcp_server _conn (request : Http.Request.t) body =
   match request.meth with
+  | `OPTIONS ->
+      Log.debug (fun m -> m "Received OPTIONS request (CORS preflight)");
+      let headers = add_cors_headers cors (Http.Header.init ()) request in
+      Cohttp_eio.Server.respond ~status:`No_content ~headers
+        ~body:(Cohttp_eio.Body.of_string "")
+        ()
   | `POST -> (
       Log.debug (fun m -> m "Received POST request");
       let request_body_str =
@@ -487,14 +564,17 @@ let callback mcp_server _conn (request : Http.Request.t) body =
           let response_str = Yojson.Safe.to_string response_json in
           Log.debug (fun m -> m "Sending MCP response: %s" response_str);
           let headers =
-            Http.Header.of_list [ ("Content-Type", "application/json") ]
+            add_cors_headers cors
+              (Http.Header.of_list [ ("Content-Type", "application/json") ])
+              request
           in
           Cohttp_eio.Server.respond ~status:`OK ~headers
             ~body:(Cohttp_eio.Body.of_string response_str)
             ()
       | None ->
           Log.debug (fun m -> m "No MCP response needed");
-          Cohttp_eio.Server.respond ~status:`No_content
+          let headers = add_cors_headers cors (Http.Header.init ()) request in
+          Cohttp_eio.Server.respond ~status:`No_content ~headers
             ~body:(Cohttp_eio.Body.of_string "")
             ())
   | _ ->
@@ -507,7 +587,7 @@ let callback mcp_server _conn (request : Http.Request.t) body =
 let log_warning ex = Logs.warn (fun f -> f "%a" Eio.Exn.pp ex)
 
 (** run the server using http transport *)
-let run_server ?(port = 8080) ?(on_error = log_warning) env server =
+let run_server ?(port = 8080) ?(on_error = log_warning) ?(cors = Localhost) env server =
   let net = Eio.Stdenv.net env in
   let addr = `Tcp (Eio.Net.Ipaddr.V4.loopback, port) in
 
@@ -516,7 +596,7 @@ let run_server ?(port = 8080) ?(on_error = log_warning) env server =
         (version server) (protocol_version server));
 
   Eio.Switch.run @@ fun sw ->
-  let server_spec = Cohttp_eio.Server.make ~callback:(callback server) () in
+  let server_spec = Cohttp_eio.Server.make ~callback:(callback ~cors server) () in
 
   let server_socket =
     Eio.Net.listen net ~sw ~backlog:128 ~reuse_addr:true addr

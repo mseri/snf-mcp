@@ -404,7 +404,7 @@ let resource_templates { resource_templates; _ } = resource_templates
 let prompts { prompts; _ } = prompts
 
 (* Create a new server *)
-let create_server ~name ?(version = "0.1.0") ?(protocol_version = "2024-11-05")
+let create_server ~name ?(version = "0.1.0") ?(protocol_version = "2025-03-26")
     () =
   {
     name;
